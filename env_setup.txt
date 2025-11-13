@@ -1,0 +1,30 @@
+#!/bin/bash
+# save your public key to your GitHub ssh-key first
+git clone git@github.com:seamoon76/VLM-reasoning.git
+
+cd VLM-Visualizer
+
+# activate conda environment
+conda create -n llava python==3.10
+conda activate llava
+
+# Load modules
+module purge
+module load cuda/12.8
+
+export CUDA_HOME=/cluster/data/cuda/12.8.0/
+export PATH=$CUDA_HOME/bin:$PATH
+export LD_LIBRARY_PATH=$CUDA_HOME/lib64:$LD_LIBRARY_PATH
+
+pip install torch==2.7.1 torchvision==0.22.1 torchaudio==2.7.1 --index-url https://download.pytorch.org/whl/cu128
+pip uninstall numpy -y
+pip install "numpy<2"
+pip install -r requirements.txt --no-build-isolation
+
+# if you need flush attention, downgrade setuptools to 69.5.1, download wheels by: wget https://github.com/mjun0812/flash-attention-prebuild-wheels/releases/download/v0.3.18/flash_attn-2.7.4+cu128torch2.7-cp310-cp310-linux_x86_64.whl and use pip install from wheels
+
+# apply a node with GPU
+srun -A deep_learning -G 1 -t 00:10:00 --pty /bin/bash
+
+# set the scratch home for model storage
+export HF_HOME=/work/scratch/maqima/
