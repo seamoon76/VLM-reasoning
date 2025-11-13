@@ -149,3 +149,4 @@ cache/
 data/
 
 *legacy*
+*.png
