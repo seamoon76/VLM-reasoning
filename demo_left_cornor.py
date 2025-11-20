@@ -45,8 +45,8 @@ tokenizer, model, image_processor, context_len = load_pretrained_model(
 )
 
 # ===> specify the image path or url and the prompt text
-image_path_or_url = "/home/maqima/VLM-Visualizer/data/2.png"
-prompt_text = "Is there anything in the top left corner??"
+image_path_or_url = "/home/maqima/VLM-Visualizer/data/1.png"
+prompt_text = "What is the positional relationship between the two figures in the image?"
 
 ################################################
 # preparation for the generation
@@ -147,7 +147,7 @@ enhanced_attn_m = np.power(llm_attn_matrix.numpy(), 1 / gamma_factor)
 fig, ax = plt.subplots(figsize=(10, 20), dpi=150)
 ax.imshow(enhanced_attn_m, vmin=enhanced_attn_m.min(), vmax=enhanced_attn_m.max(), interpolation="nearest")
 
-fig.savefig("enhanced_attn_wo_left.png", dpi=150, bbox_inches='tight')
+fig.savefig("enhanced_attn_relation.png", dpi=150, bbox_inches='tight')
 
 # identify length or index of tokens
 input_token_len = model.get_vision_tower().num_patches + len(input_ids[0]) - 1 # -1 for the <image> token
@@ -185,7 +185,7 @@ ax.set_xticklabels(
 )
 ax.set_title("at each token, the sum of attention weights over all the vision tokens");
 
-fig.savefig("overall_attn_weights_wo_left.png", dpi=150, bbox_inches='tight')
+fig.savefig("overall_attn_weights_relation.png", dpi=150, bbox_inches='tight')
 
 # connect with the vision encoder attention
 # to visualize the attention over the image
@@ -250,5 +250,5 @@ for i, ax in enumerate(axes.flatten()):
     )
     ax.axis("off")
 
-fig.savefig("attention_grid_wo_left.png", dpi=150, bbox_inches='tight')
+fig.savefig("attention_grid_relation.png", dpi=150, bbox_inches='tight')
 plt.close(fig)
