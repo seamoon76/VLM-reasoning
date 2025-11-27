@@ -45,7 +45,7 @@ tokenizer, model, image_processor, context_len = load_pretrained_model(
 )
 
 # ===> specify the image path or url and the prompt text
-image_path_or_url = "/home/maqima/VLM-Visualizer/data/2.png"
+image_path_or_url = "/home/yimizhao/VLM-reasoning/data/2.jpg"
 prompt_text = "Is there anything in the top left corner??"
 
 ################################################
@@ -252,3 +252,23 @@ for i, ax in enumerate(axes.flatten()):
 
 fig.savefig("attention_grid_wo_left.png", dpi=150, bbox_inches='tight')
 plt.close(fig)
+
+# Save attention data for analysis
+print("\nSaving attention data to attention_data/...")
+torch.save({
+    'llm_attentions': outputs['attentions'],  # LLM attention per head per layer
+    'vision_attentions': model.get_vision_tower().image_attentions,  # Vision encoder attention
+    'llm_attn_matrix': llm_attn_matrix,  # Aggregated LLM attention matrix
+    'vis_attn_matrix': vis_attn_matrix,  # Aggregated vision attention matrix
+    'sequences': outputs['sequences'],  # Generated token IDs
+    'input_ids': input_ids,  # Input token IDs
+    'vision_token_start': vision_token_start,
+    'vision_token_end': vision_token_end,
+    'output_token_start': output_token_start,
+    'output_token_end': output_token_end,
+    'grid_size': grid_size,
+    'image_size': image_size,
+    'prompt_text': prompt_text,
+    'response_text': text,
+}, 'attention_data/attention_without_triangle.pt')
+print("Saved to attention_data/attention_without_triangle.pt")
