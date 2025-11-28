@@ -1,68 +1,28 @@
 import os
-import sys
-sys.path.append("./models")
 import numpy as np
-import matplotlib.pyplot as plt
-import cv2
-from PIL import Image
-
 import torch
 import torch.nn.functional as F
-
-from llava.constants import IMAGE_TOKEN_INDEX, DEFAULT_IMAGE_TOKEN, DEFAULT_IM_START_TOKEN, DEFAULT_IM_END_TOKEN
-from llava.conversation import conv_templates, SeparatorStyle
-from llava.model.builder import load_pretrained_model
-from llava.utils import disable_torch_init
-from llava.mm_utils import process_images, tokenizer_image_token, get_model_name_from_path
-
 from utils import (
     load_image,
-    aggregate_llm_attention, aggregate_vit_attention,
+    aggregate_llm_attention,
+    aggregate_vit_attention,
     heterogenous_stack,
-    show_mask_on_image
 )
 
-model_path = "liuhaotian/llava-v1.5-7b"
+def extract_input_cross_attention_maps(image_path_or_url, prompt_text):
+    """
+    Extract cross-attention maps between visual patches and text tokens.
 
-load_8bit = False
-load_4bit = False
-device = "cuda" if torch.cuda.is_available() else "cpu"
-disable_torch_init()
+    Args:
+        image_path_or_url (str): Path to the input image.
+        prompt_text (str): Input text prompt.
 
-model_name = get_model_name_from_path(model_path)
-tokenizer, model, image_processor, context_len = load_pretrained_model(
-    model_path,
-    None,
-    model_name,
-    load_8bit,
-    load_4bit,
-    device=device,
-    attn_implementation="eager",
-    torch_dtype=torch.bfloat16
-)
-
-
-def process_one_image_question(image_path_or_url, prompt_text, output_prefix="out"):
-
-    if "llama-2" in model_name.lower():
-        conv_mode = "llava_llama_2"
-    elif "mistral" in model_name.lower():
-        conv_mode = "mistral_instruct"
-    elif "v1.6-34b" in model_name.lower():
-        conv_mode = "chatml_direct"
-    elif "v1" in model_name.lower():
-        conv_mode = "llava_v1"
-    elif "mpt" in model_name.lower():
-        conv_mode = "mpt"
-    else:
-        conv_mode = "llava_v0"
-
-    conv = conv_templates[conv_mode].copy()
-    roles = conv.roles
-
+    Returns:
+        torch.Tensor: Cross-attention maps of shape [num_visual_patches, num_text_tokens].
+    """
+    # Load and preprocess the image
     image = load_image(image_path_or_url)
     image_tensor, images = process_images([image], image_processor, model.config)
-    image = images[0]
     image_size = image.size
 
     if type(image_tensor) is list:
@@ -70,28 +30,22 @@ def process_one_image_question(image_path_or_url, prompt_text, output_prefix="ou
     else:
         image_tensor = image_tensor.to(model.device, dtype=torch.float16)
 
+    # Prepare the input prompt
     if model.config.mm_use_im_start_end:
         inp = DEFAULT_IM_START_TOKEN + DEFAULT_IMAGE_TOKEN + DEFAULT_IM_END_TOKEN + "\n" + prompt_text
     else:
         inp = DEFAULT_IMAGE_TOKEN + "\n" + prompt_text
 
+    conv = conv_templates["llava_v1"].copy()
     conv.append_message(conv.roles[0], inp)
     conv.append_message(conv.roles[1], None)
-
     prompt = conv.get_prompt()
-    prompt = prompt.replace(
-        "A chat between a curious human and an artificial intelligence assistant. "
-        "The assistant gives helpful, detailed, and polite answers to the human's questions. ",
-        ""
-    )
 
     input_ids = tokenizer_image_token(
         prompt, tokenizer, IMAGE_TOKEN_INDEX, return_tensors='pt'
     ).unsqueeze(0).to(model.device)
 
-    print("Q:", prompt_text)
-
-    # generate the response & attention
+    # Generate outputs and extract attention
     with torch.inference_mode():
         outputs = model.generate(
             input_ids,
@@ -104,153 +58,107 @@ def process_one_image_question(image_path_or_url, prompt_text, output_prefix="ou
             output_attentions=True,
         )
 
-    text_output = tokenizer.decode(outputs["sequences"][0]).strip()
-    print("A:", text_output)
-
-    # ======= LLM attention =======
+    # Extract LLM attention matrix
     aggregated_prompt_attention = []
     for layer in outputs["attentions"][0]:
         layer_attns = layer.squeeze(0)
         attns_per_head = layer_attns.mean(dim=0)
         cur = attns_per_head[:-1].cpu().clone()
-        # following the practice in `aggregate_llm_attention`
-        # we are zeroing out the attention to the first <bos> token
-        # for the first row `cur[0]` (corresponding to the next token after <bos>), however,
-        # we don't do this because <bos> is the only token that it can attend to
-        cur[1:, 0] = 0.
+        cur[1:, 0] = 0.  # Zero out attention to the first <bos> token
         cur[1:] = cur[1:] / cur[1:].sum(-1, keepdim=True)
         aggregated_prompt_attention.append(cur)
 
     aggregated_prompt_attention = torch.stack(aggregated_prompt_attention).mean(dim=0)
-    # llm_attn_matrix will be of torch.Size([N, N])
-    # where N is the total number of input (both image and text ones) + output tokens
     llm_attn_matrix = heterogenous_stack(
         [torch.tensor([1])]
         + list(aggregated_prompt_attention)
         + list(map(aggregate_llm_attention, outputs["attentions"]))
     )
 
-    # === save enhanced LLM attention map
-    # visualize the llm attention matrix
-    # ===> adjust the gamma factor to enhance the visualization
-    #      higher gamma brings out more low attention values
-    gamma_factor = 1
-    enhanced_attn_m = np.power(llm_attn_matrix.numpy(), 1 / gamma_factor)
-
-    fig, ax = plt.subplots(figsize=(10, 20), dpi=150)
-    ax.imshow(enhanced_attn_m, vmin=enhanced_attn_m.min(), vmax=enhanced_attn_m.max())
-    fig.savefig(f"{output_prefix}_enhanced_attn.png", dpi=150, bbox_inches='tight')
-    plt.close(fig)
-
-    # ===========================================================
-    input_token_len = model.get_vision_tower().num_patches + len(input_ids[0]) - 1
+    # Extract cross-attention maps
     vision_token_start = len(tokenizer(prompt.split("<image>")[0], return_tensors='pt')["input_ids"][0])
     vision_token_end = vision_token_start + model.get_vision_tower().num_patches
 
-    output_token_len = len(outputs["sequences"][0])
-    output_token_start = input_token_len
-    output_token_end = input_token_len + output_token_len
+    cross_attention_maps = llm_attn_matrix[vision_token_start:vision_token_end, :vision_token_start]
 
-    # look at the attention weights over the vision tokens
-    overall_attn_weights_over_vis_tokens = []
+    return cross_attention_maps
 
-    for row in llm_attn_matrix[input_token_len:output_token_end]:
-        overall_attn_weights_over_vis_tokens.append(
-            row[vision_token_start:vision_token_end].sum().item()
-        )
-    # plot the trend of attention weights over the vision tokens
-    fig, ax = plt.subplots(figsize=(20, 5))
-    ax.plot(overall_attn_weights_over_vis_tokens)
-    ax.set_xticks(range(len(overall_attn_weights_over_vis_tokens)))
-    ax.set_xticklabels(
-        [tokenizer.decode(tok, add_special_tokens=False).strip()
-         for tok in outputs["sequences"][0].tolist()],
-        rotation=75
-    )
-    ax.set_title("Sum of attention over all vision tokens")
-    fig.savefig(f"{output_prefix}_overall_attn_weights.png", dpi=150, bbox_inches='tight')
-    plt.close(fig)
+def compute_center_of_mass_distance(cross_attention_maps, ground_truth):
+    """
+    Compute the center-of-mass distance between cross-attention maps and ground-truth annotations.
 
-    # ===========================================================
-    # connect with the vision encoder attention
-    # to visualize the attention over the image
-    vis_attn_matrix = aggregate_vit_attention(
-        model.get_vision_tower().image_attentions,
-        select_layer=model.get_vision_tower().select_layer,
-        all_prev_layers=True
+    Args:
+        cross_attention_maps (torch.Tensor): Cross-attention maps of shape [num_text_tokens, num_visual_patches].
+        ground_truth (torch.Tensor): Ground-truth binary mask of shape [grid_size, grid_size].
+
+    Returns:
+        float: Center-of-mass distance.
+    """
+    # Compute the center of mass for the attention map
+    grid_size = int(ground_truth.shape[0] ** 0.5)
+    attn_map = cross_attention_maps.mean(dim=0).reshape(grid_size, grid_size)
+    attn_map = attn_map / attn_map.sum()
+
+    attn_com = torch.tensor(
+        [torch.sum(attn_map * torch.arange(grid_size).view(-1, 1)),
+         torch.sum(attn_map * torch.arange(grid_size).view(1, -1))]
     )
 
-    grid_size = model.get_vision_tower().num_patches_per_side
-    tokens = outputs["sequences"][0].tolist()
-
-    # grid visualization
-    num_image_per_row = 8
-    image_ratio = image_size[0] / image_size[1]
-    num_rows = (output_token_len + num_image_per_row - 1) // num_image_per_row
-
-    fig, axes = plt.subplots(
-        num_rows, num_image_per_row,
-        figsize=(10, (10 / num_image_per_row) * image_ratio * num_rows),
-        dpi=150
+    # Compute the center of mass for the ground-truth mask
+    gt_com = torch.tensor(
+        [torch.sum(ground_truth * torch.arange(grid_size).view(-1, 1)),
+         torch.sum(ground_truth * torch.arange(grid_size).view(1, -1))]
     )
 
-    plt.subplots_adjust(wspace=0.05, hspace=0.2)
-
-    vis_overlayed_with_attn = True
-
-    output_token_inds = list(range(output_token_start, output_token_end))
-
-    for i, ax in enumerate(axes.flatten()):
-        if i >= output_token_len:
-            ax.axis("off")
-            continue
-
-        target_token_ind = output_token_inds[i]
-
-        attn_weights_over_vis_tokens = llm_attn_matrix[target_token_ind][vision_token_start:vision_token_end]
-        attn_weights_over_vis_tokens = attn_weights_over_vis_tokens / attn_weights_over_vis_tokens.sum()
-
-        attn_over_image = []
-        for weight, vis_attn in zip(attn_weights_over_vis_tokens, vis_attn_matrix):
-            vis_attn = vis_attn.reshape(grid_size, grid_size)
-            attn_over_image.append(vis_attn * weight)
-
-        attn_over_image = torch.stack(attn_over_image).sum(dim=0)
-        attn_over_image = attn_over_image / attn_over_image.max()
-
-        attn_over_image = F.interpolate(
-            attn_over_image.unsqueeze(0).unsqueeze(0),
-            size=image.size,
-            mode='nearest'
-        ).squeeze()
-
-        np_img = np.array(image)[:, :, ::-1]
-        img_with_attn, heatmap = show_mask_on_image(np_img, attn_over_image.to(torch.float32).cpu().numpy())
-
-        ax.imshow(img_with_attn if vis_overlayed_with_attn else heatmap)
-        ax.set_title(
-            tokenizer.decode(outputs["sequences"][0][i], add_special_tokens=False).strip(),
-            fontsize=7,
-            pad=1
-        )
-        ax.axis("off")
-
-    fig.savefig(f"{output_prefix}_attention_grid.png", dpi=150, bbox_inches='tight')
-    plt.close(fig)
-
-    return text_output
+    # Compute the Euclidean distance between the two centers of mass
+    return torch.norm(attn_com - gt_com).item()
 
 
-###############################################
-# 3) batch process
-###############################################
+def compute_iou(cross_attention_maps, ground_truth, threshold=0.5):
+    """
+    Compute the Intersection over Union (IoU) between cross-attention maps and ground-truth annotations.
 
-image_path_list, caption_list = load_data_from_shard("data/spatial_twoshapes/agreement/relational/test/shard0")
+    Args:
+        cross_attention_maps (torch.Tensor): Cross-attention maps of shape [num_text_tokens, num_visual_patches].
+        ground_truth (torch.Tensor): Ground-truth binary mask of shape [grid_size, grid_size].
+        threshold (float): Threshold to binarize the attention map.
 
-assert len(caption_list) == len(image_path_list)
+    Returns:
+        float: IoU score.
+    """
+    grid_size = int(ground_truth.shape[0] ** 0.5)
+    attn_map = cross_attention_maps.mean(dim=0).reshape(grid_size, grid_size)
+    attn_map = attn_map / attn_map.max()
 
-for i, (q, img) in enumerate(zip(caption_list, image_path_list)):
-    prefix = f"sample_{i}"
-    print(f"\n==== Processing {i}: {img} ====\n")
-    process_one_image_question(img, q, output_prefix=prefix)
+    # Binarize the attention map
+    attn_binary = (attn_map > threshold).float()
 
+    # Compute IoU
+    intersection = (attn_binary * ground_truth).sum().item()
+    union = (attn_binary + ground_truth).clamp(0, 1).sum().item()
+
+    return intersection / union
+
+
+# Example usage
+if __name__ == "__main__":
+    image_path = "/home/maqima/VLM-Visualizer/data/spatial_twoshapes/agreement/relational/test/shard0/world-1.png"
+    prompt_text = "a pentagon is to the right of an ellipse."
+
+    # Extract cross-attention maps
+    cross_attention_maps = extract_cross_attention_maps(image_path, prompt_text)
+
+    # print shape
+    print("Cross-Attention Maps Shape:", cross_attention_maps.shape)
+
+    # Example ground-truth mask (binary mask of shape [grid_size, grid_size])
+    grid_size = 14  # Example grid size
+    ground_truth = torch.zeros(grid_size, grid_size)
+    ground_truth[3:5, 6:8] = 1  # Example ground-truth region
+
+    # Compute metrics
+    com_distance = compute_center_of_mass_distance(cross_attention_maps, ground_truth)
+    iou_score = compute_iou(cross_attention_maps, ground_truth)
+
+    print(f"Center-of-Mass Distance: {com_distance}")
+    print(f"IoU Score: {iou_score}")
