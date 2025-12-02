@@ -112,16 +112,16 @@ def extract_input_cross_attention_maps(image_path_or_url, prompt_text):
 
     return cross_attention_maps
 
-def gt_bbox_to_patch_mask(entity, grid_size, image_size=64):
+def gt_bbox_to_patch_mask(entity1, entity2, grid_size, image_size=64):
     """
     Convert GT bounding box (normalized 0-1) into a binary mask
     on a patch grid (grid_size x grid_size).
     """
     # normalized → pixel
-    xmin = entity["bounding_box"]["topleft"]["x"] * image_size
-    ymin = entity["bounding_box"]["topleft"]["y"] * image_size
-    xmax = entity["bounding_box"]["bottomright"]["x"] * image_size
-    ymax = entity["bounding_box"]["bottomright"]["y"] * image_size
+    xmin = entity1["bounding_box"]["topleft"]["x"] * image_size
+    ymin = entity1["bounding_box"]["topleft"]["y"] * image_size
+    xmax = entity1["bounding_box"]["bottomright"]["x"] * image_size
+    ymax = entity1["bounding_box"]["bottomright"]["y"] * image_size
 
     patch_size = image_size / grid_size
 
@@ -133,6 +133,18 @@ def gt_bbox_to_patch_mask(entity, grid_size, image_size=64):
 
     mask = torch.zeros(grid_size, grid_size)
     mask[py_min:py_max+1, px_min:px_max+1] = 1
+
+    xmin = entity1["bounding_box"]["topleft"]["x"] * image_size
+    ymin = entity1["bounding_box"]["topleft"]["y"] * image_size
+    xmax = entity1["bounding_box"]["bottomright"]["x"] * image_size
+    ymax = entity1["bounding_box"]["bottomright"]["y"] * image_size
+
+    px_min = int(xmin / patch_size)
+    py_min = int(ymin / patch_size)
+    px_max = int(xmax / patch_size)
+    py_max = int(ymax / patch_size)
+    mask[py_min:py_max+1, px_min:px_max+1] = 1
+
     return mask
 
 def reshape_attention_to_grid(attn, grid_size):
@@ -192,20 +204,48 @@ def compute_iou(cross_attention_maps, gt_mask, grid_size, topk_ratio=0.1):
 
 import json
 
-i = 4    # example index
-json_path = f"/home/maqima/VLM-Visualizer/data/spatial_twoshapes/agreement/relational/test/shard0/world_model.json"
-img_path = f"/home/maqima/VLM-Visualizer/data/spatial_twoshapes/agreement/relational/test/shard0/world-{i}.png"
+import json
+import numpy as np
+
+BASE = "/home/maqima/VLM-Visualizer/data/spatial_twoshapes/agreement/relational/test/shard0"
+json_path = f"{BASE}/world_model.json"
+agreement_path = f"{BASE}/agreement.txt"
 
 world = json.load(open(json_path))
-entity = world[i]["entities"][0]   # choose entity 0 for example
+agreement = [float(x.strip()) for x in open(agreement_path).readlines()]  # 长度 100
 
-grid_size = 24   # depends on llava vision tower
-gt_mask = gt_bbox_to_patch_mask(entity, grid_size)
+grid_size = 24  # depends on llava vision tower
 
-attn = extract_input_cross_attention_maps(img_path, "the circle is left of the square")
-print(attn.shape)
-com = compute_center_of_mass_distance(attn, gt_mask, grid_size)
-iou = compute_iou(attn, gt_mask, grid_size)
+all_com = []
+all_iou = []
 
-print("COM:", com)
-print("IoU:", iou)
+for i, flag in enumerate(agreement):
+
+    if flag != 1.0:
+        continue 
+
+    print(f"Processing sample {i}...")
+
+    img_path = f"{BASE}/world-{i}.png"
+
+    entity1 = world[i]["entities"][0]
+    entity2 = world[i]["entities"][1]
+
+    gt_mask = gt_bbox_to_patch_mask(entity1, entity2, grid_size)
+
+    attn = extract_input_cross_attention_maps(img_path, "the circle is left of the square")
+    com = compute_center_of_mass_distance(attn, gt_mask, grid_size)
+    iou = compute_iou(attn, gt_mask, grid_size)
+
+    all_com.append(com)
+    all_iou.append(iou)
+
+avg_com = np.mean(all_com)
+avg_iou = np.mean(all_iou)
+
+print("=================================")
+print(f"Processed samples: {len(all_com)}")
+print(f"Average CoM: {avg_com:.4f}")
+print(f"Average IoU: {avg_iou:.4f}")
+print("=================================")
+
