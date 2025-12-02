@@ -2,11 +2,38 @@ import os
 import numpy as np
 import torch
 import torch.nn.functional as F
+import sys
+sys.path.append("./models")
+
+from llava.constants import IMAGE_TOKEN_INDEX, DEFAULT_IMAGE_TOKEN, DEFAULT_IM_START_TOKEN, DEFAULT_IM_END_TOKEN
+from llava.conversation import conv_templates, SeparatorStyle
+from llava.model.builder import load_pretrained_model
+from llava.utils import disable_torch_init
+from llava.mm_utils import process_images, tokenizer_image_token, get_model_name_from_path
+
 from utils import (
     load_image,
-    aggregate_llm_attention,
-    aggregate_vit_attention,
+    aggregate_llm_attention, aggregate_vit_attention,
     heterogenous_stack,
+    show_mask_on_image
+)
+model_path = "liuhaotian/llava-v1.5-7b"
+
+load_8bit = False
+load_4bit = False
+device = "cuda" if torch.cuda.is_available() else "cpu"
+disable_torch_init()
+
+model_name = get_model_name_from_path(model_path)
+tokenizer, model, image_processor, context_len = load_pretrained_model(
+    model_path,
+    None,
+    model_name,
+    load_8bit,
+    load_4bit,
+    device=device,
+    attn_implementation="eager",
+    torch_dtype=torch.bfloat16
 )
 
 def extract_input_cross_attention_maps(image_path_or_url, prompt_text):
@@ -57,6 +84,8 @@ def extract_input_cross_attention_maps(image_path_or_url, prompt_text):
             return_dict_in_generate=True,
             output_attentions=True,
         )
+        print(model.get_vision_tower().num_patches)
+        
 
     # Extract LLM attention matrix
     aggregated_prompt_attention = []
@@ -83,82 +112,100 @@ def extract_input_cross_attention_maps(image_path_or_url, prompt_text):
 
     return cross_attention_maps
 
-def compute_center_of_mass_distance(cross_attention_maps, ground_truth):
+def gt_bbox_to_patch_mask(entity, grid_size, image_size=64):
     """
-    Compute the center-of-mass distance between cross-attention maps and ground-truth annotations.
-
-    Args:
-        cross_attention_maps (torch.Tensor): Cross-attention maps of shape [num_text_tokens, num_visual_patches].
-        ground_truth (torch.Tensor): Ground-truth binary mask of shape [grid_size, grid_size].
-
-    Returns:
-        float: Center-of-mass distance.
+    Convert GT bounding box (normalized 0-1) into a binary mask
+    on a patch grid (grid_size x grid_size).
     """
-    # Compute the center of mass for the attention map
-    grid_size = int(ground_truth.shape[0] ** 0.5)
-    attn_map = cross_attention_maps.mean(dim=0).reshape(grid_size, grid_size)
+    # normalized → pixel
+    xmin = entity["bounding_box"]["topleft"]["x"] * image_size
+    ymin = entity["bounding_box"]["topleft"]["y"] * image_size
+    xmax = entity["bounding_box"]["bottomright"]["x"] * image_size
+    ymax = entity["bounding_box"]["bottomright"]["y"] * image_size
+
+    patch_size = image_size / grid_size
+
+    # convert pixel bbox → patch indices
+    px_min = int(xmin / patch_size)
+    py_min = int(ymin / patch_size)
+    px_max = int(xmax / patch_size)
+    py_max = int(ymax / patch_size)
+
+    mask = torch.zeros(grid_size, grid_size)
+    mask[py_min:py_max+1, px_min:px_max+1] = 1
+    return mask
+
+def reshape_attention_to_grid(attn, grid_size):
+    """
+    attn: [num_text_tokens, num_visual_patches]
+    returns: [grid_size, grid_size] averaged over text tokens
+    """
+    num_patches = grid_size * grid_size
+    attn = attn[:, :num_patches]  # ensure alignment
+    attn_map = attn.mean(dim=1).reshape(grid_size, grid_size)
     attn_map = attn_map / attn_map.sum()
+    return attn_map
 
-    attn_com = torch.tensor(
-        [torch.sum(attn_map * torch.arange(grid_size).view(-1, 1)),
-         torch.sum(attn_map * torch.arange(grid_size).view(1, -1))]
-    )
 
-    # Compute the center of mass for the ground-truth mask
-    gt_com = torch.tensor(
-        [torch.sum(ground_truth * torch.arange(grid_size).view(-1, 1)),
-         torch.sum(ground_truth * torch.arange(grid_size).view(1, -1))]
-    )
+def compute_center_of_mass_distance(cross_attention_maps, gt_mask, grid_size):
+    """
+    cross_attention_maps: [num_text_tokens, num_visual_patches]
+    gt_mask: [grid_size, grid_size]
+    """
+    attn_map = reshape_attention_to_grid(cross_attention_maps, grid_size)
 
-    # Compute the Euclidean distance between the two centers of mass
+    # coordinates
+    xs = torch.arange(grid_size).view(1, -1)  # row vector
+    ys = torch.arange(grid_size).view(-1, 1)  # column vector
+
+    attn_com = torch.tensor([
+        (attn_map * ys).sum(),
+        (attn_map * xs).sum()
+    ])
+
+    gt_mask = gt_mask / (gt_mask.sum() + 1e-6)
+    gt_com = torch.tensor([
+        (gt_mask * ys).sum(),
+        (gt_mask * xs).sum()
+    ])
+
     return torch.norm(attn_com - gt_com).item()
 
 
-def compute_iou(cross_attention_maps, ground_truth, threshold=0.5):
-    """
-    Compute the Intersection over Union (IoU) between cross-attention maps and ground-truth annotations.
 
-    Args:
-        cross_attention_maps (torch.Tensor): Cross-attention maps of shape [num_text_tokens, num_visual_patches].
-        ground_truth (torch.Tensor): Ground-truth binary mask of shape [grid_size, grid_size].
-        threshold (float): Threshold to binarize the attention map.
+def compute_iou(cross_attention_maps, gt_mask, grid_size, topk_ratio=0.1):
+    attn_map = reshape_attention_to_grid(cross_attention_maps, grid_size)
 
-    Returns:
-        float: IoU score.
-    """
-    grid_size = int(ground_truth.shape[0] ** 0.5)
-    attn_map = cross_attention_maps.mean(dim=0).reshape(grid_size, grid_size)
-    attn_map = attn_map / attn_map.max()
+    # threshold by top-k rather than fixed threshold
+    k = int(grid_size * grid_size * topk_ratio)
+    flat = attn_map.flatten()
+    threshold = torch.topk(flat, k).values.min()
 
-    # Binarize the attention map
-    attn_binary = (attn_map > threshold).float()
+    attn_binary = (attn_map >= threshold).float()
 
-    # Compute IoU
-    intersection = (attn_binary * ground_truth).sum().item()
-    union = (attn_binary + ground_truth).clamp(0, 1).sum().item()
+    intersection = (attn_binary * gt_mask).sum().item()
+    union = ((attn_binary + gt_mask) > 0).sum().item()
 
     return intersection / union
 
 
-# Example usage
-if __name__ == "__main__":
-    image_path = "/home/maqima/VLM-Visualizer/data/spatial_twoshapes/agreement/relational/test/shard0/world-1.png"
-    prompt_text = "a pentagon is to the right of an ellipse."
 
-    # Extract cross-attention maps
-    cross_attention_maps = extract_cross_attention_maps(image_path, prompt_text)
+import json
 
-    # print shape
-    print("Cross-Attention Maps Shape:", cross_attention_maps.shape)
+i = 4    # example index
+json_path = f"/home/maqima/VLM-Visualizer/data/spatial_twoshapes/agreement/relational/test/shard0/world_model.json"
+img_path = f"/home/maqima/VLM-Visualizer/data/spatial_twoshapes/agreement/relational/test/shard0/world-{i}.png"
 
-    # Example ground-truth mask (binary mask of shape [grid_size, grid_size])
-    grid_size = 14  # Example grid size
-    ground_truth = torch.zeros(grid_size, grid_size)
-    ground_truth[3:5, 6:8] = 1  # Example ground-truth region
+world = json.load(open(json_path))
+entity = world[i]["entities"][0]   # choose entity 0 for example
 
-    # Compute metrics
-    com_distance = compute_center_of_mass_distance(cross_attention_maps, ground_truth)
-    iou_score = compute_iou(cross_attention_maps, ground_truth)
+grid_size = 24   # depends on llava vision tower
+gt_mask = gt_bbox_to_patch_mask(entity, grid_size)
 
-    print(f"Center-of-Mass Distance: {com_distance}")
-    print(f"IoU Score: {iou_score}")
+attn = extract_input_cross_attention_maps(img_path, "the circle is left of the square")
+print(attn.shape)
+com = compute_center_of_mass_distance(attn, gt_mask, grid_size)
+iou = compute_iou(attn, gt_mask, grid_size)
+
+print("COM:", com)
+print("IoU:", iou)
