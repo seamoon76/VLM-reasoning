@@ -36,6 +36,58 @@ tokenizer, model, image_processor, context_len = load_pretrained_model(
     torch_dtype=torch.bfloat16
 )
 
+def renormalize_cross_attention_with_pool(cross_attn_maps):
+    """
+    cross_attn_maps: [num_visual_patches, num_text_tokens]
+    return: vector [num_visual_patches] normalized to sum=1
+    """
+    # max-pooling across text tokens
+    # top 3 averaging
+    topk = 3
+    topk_vals, _ = torch.topk(cross_attn_maps, topk, dim=1)
+    pooled = topk_vals.mean(dim=1)
+    #pooled = cross_attn_maps.max(dim=1).values   # [num_visual_patches]
+    pooled = torch.clamp(pooled, min=0)
+    pooled = pooled / (pooled.sum() + 1e-6)
+    return pooled
+
+def renormalize_cross_attention_with_pool_sharpen(cross_attn_maps):
+    #pooled = cross_attn_maps.max(dim=1).values
+    
+    # top 3 averaging
+    topk = 3
+    topk_vals, _ = torch.topk(cross_attn_maps, topk, dim=1)
+    pooled = topk_vals.mean(dim=1)
+    max_idx = pooled.argmax()
+    mask = torch.zeros_like(pooled)
+    mask[max_idx] = 1
+    return mask
+
+def threshold_topk_by_gt_area(cross_attn_maps, gt_mask):
+    """
+    cross_attn_maps: [num_visual_patches, num_text_tokens]
+    gt_mask: [grid_size, grid_size]
+    """
+    # max-pooling across text tokens
+    #pooled = cross_attn_maps.max(dim=1).values
+    # top 3 averaging
+    topk = 3
+    topk_vals, _ = torch.topk(cross_attn_maps, topk, dim=1)
+    pooled = topk_vals.mean(dim=1)
+
+    pooled = torch.clamp(pooled, min=0)
+
+    # number of GT patches
+    k = int(gt_mask.sum().item())
+    k = max(k, 1)
+
+    # pick top-k patches
+    topk_vals, topk_idx = torch.topk(pooled, k)
+
+    binary = torch.zeros_like(pooled)
+    binary[topk_idx] = 1
+    return binary
+
 def extract_input_cross_attention_maps(image_path_or_url, prompt_text):
     """
     Extract cross-attention maps between visual patches and text tokens.
@@ -147,57 +199,44 @@ def gt_bbox_to_patch_mask(entity1, entity2, grid_size, image_size=64):
 
     return mask
 
-def reshape_attention_to_grid(attn, grid_size):
+def reshape_attention_to_grid(attn_vec, grid_size):
     """
-    attn: [num_text_tokens, num_visual_patches]
-    returns: [grid_size, grid_size] averaged over text tokens
+    attn_vec: [num_visual_patches] after re-normalization
+    return: [grid_size, grid_size]
     """
     num_patches = grid_size * grid_size
-    attn = attn[:, :num_patches]  # ensure alignment
-    attn_map = attn.mean(dim=1).reshape(grid_size, grid_size)
-    attn_map = attn_map / attn_map.sum()
+    attn_vec = attn_vec[:num_patches]
+    attn_map = attn_vec.reshape(grid_size, grid_size)
     return attn_map
 
 
-def compute_center_of_mass_distance(cross_attention_maps, gt_mask, grid_size):
-    """
-    cross_attention_maps: [num_text_tokens, num_visual_patches]
-    gt_mask: [grid_size, grid_size]
-    """
-    attn_map = reshape_attention_to_grid(cross_attention_maps, grid_size)
 
-    # coordinates
-    xs = torch.arange(grid_size).view(1, -1)  # row vector
-    ys = torch.arange(grid_size).view(-1, 1)  # column vector
+def compute_center_of_mass_distance(attn_map, gt_mask, grid_size):
+    xs = torch.arange(grid_size).view(1, -1)
+    ys = torch.arange(grid_size).view(-1, 1)
 
-    attn_com = torch.tensor([
-        (attn_map * ys).sum(),
-        (attn_map * xs).sum()
-    ])
+    attn_com = torch.tensor([(attn_map * ys).sum(),
+                             (attn_map * xs).sum()])
 
     gt_mask = gt_mask / (gt_mask.sum() + 1e-6)
-    gt_com = torch.tensor([
-        (gt_mask * ys).sum(),
-        (gt_mask * xs).sum()
-    ])
+    gt_com = torch.tensor([(gt_mask * ys).sum(),
+                           (gt_mask * xs).sum()])
 
     return torch.norm(attn_com - gt_com).item()
 
 
 
-def compute_iou(cross_attention_maps, gt_mask, grid_size, topk_ratio=0.1):
-    attn_map = reshape_attention_to_grid(cross_attention_maps, grid_size)
 
-    # threshold by top-k rather than fixed threshold
+def compute_iou(attn_map, gt_mask, grid_size, topk_ratio=0.1):
+    # threshold at top-k patches
     k = int(grid_size * grid_size * topk_ratio)
     flat = attn_map.flatten()
-    threshold = torch.topk(flat, k).values.min()
+    thresh = torch.topk(flat, k).values.min()
 
-    attn_binary = (attn_map >= threshold).float()
+    attn_binary = (flat >= thresh).float().reshape(grid_size, grid_size)
 
     intersection = (attn_binary * gt_mask).sum().item()
     union = ((attn_binary + gt_mask) > 0).sum().item()
-
     return intersection / union
 
 
@@ -223,7 +262,6 @@ for i, flag in enumerate(agreement):
 
     if flag != 1.0:
         continue 
-
     print(f"Processing sample {i}...")
 
     img_path = f"{BASE}/world-{i}.png"
@@ -234,8 +272,17 @@ for i, flag in enumerate(agreement):
     gt_mask = gt_bbox_to_patch_mask(entity1, entity2, grid_size)
 
     attn = extract_input_cross_attention_maps(img_path, "the circle is left of the square")
-    com = compute_center_of_mass_distance(attn, gt_mask, grid_size)
-    iou = compute_iou(attn, gt_mask, grid_size)
+    # print("attn shape:", attn.shape)
+    # print("before renorm:",attn.max(), attn.mean(), attn.min())
+    #normed = threshold_topk_by_gt_area(attn, gt_mask)
+    normed = renormalize_cross_attention_with_pool_sharpen(attn)
+    # print("atten shape:", normed.shape)
+    # print("after renorm:", normed.max(), normed.mean(), normed.min())
+    attn_map = reshape_attention_to_grid(normed, grid_size)
+
+    com = compute_center_of_mass_distance(attn_map, gt_mask, grid_size)
+    iou = compute_iou(attn_map, gt_mask, grid_size)
+
 
     all_com.append(com)
     all_iou.append(iou)
