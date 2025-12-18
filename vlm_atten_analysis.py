@@ -43,10 +43,10 @@ def renormalize_cross_attention_with_pool(cross_attn_maps):
     """
     # max-pooling across text tokens
     # top 3 averaging
-    topk = 3
-    topk_vals, _ = torch.topk(cross_attn_maps, topk, dim=1)
-    pooled = topk_vals.mean(dim=1)
-    #pooled = cross_attn_maps.max(dim=1).values   # [num_visual_patches]
+    #topk = 3
+    #topk_vals, _ = torch.topk(cross_attn_maps, topk, dim=1)
+    #pooled = topk_vals.mean(dim=1)
+    pooled = cross_attn_maps.max(dim=1).values   # [num_visual_patches]
     pooled = torch.clamp(pooled, min=0)
     pooled = pooled / (pooled.sum() + 1e-6)
     return pooled
@@ -119,11 +119,14 @@ def extract_input_cross_attention_maps(image_path_or_url, prompt_text):
     conv.append_message(conv.roles[0], inp)
     conv.append_message(conv.roles[1], None)
     prompt = conv.get_prompt()
-
+    prompt = prompt.replace(
+        "A chat between a curious human and an artificial intelligence assistant. The assistant gives helpful, detailed, and polite answers to the human's questions. ",
+        ""
+    )
     input_ids = tokenizer_image_token(
         prompt, tokenizer, IMAGE_TOKEN_INDEX, return_tensors='pt'
     ).unsqueeze(0).to(model.device)
-
+    print(prompt)
     # Generate outputs and extract attention
     with torch.inference_mode():
         outputs = model.generate(
@@ -136,7 +139,7 @@ def extract_input_cross_attention_maps(image_path_or_url, prompt_text):
             return_dict_in_generate=True,
             output_attentions=True,
         )
-        print(model.get_vision_tower().num_patches)
+        #print(model.get_vision_tower().num_patches)
         
 
     # Extract LLM attention matrix
@@ -249,10 +252,10 @@ import numpy as np
 BASE = "/home/maqima/VLM-Visualizer/data/spatial_twoshapes/agreement/relational/test/shard0"
 json_path = f"{BASE}/world_model.json"
 agreement_path = f"{BASE}/agreement.txt"
-
+caption_path = f"{BASE}/caption.txt"
 world = json.load(open(json_path))
 agreement = [float(x.strip()) for x in open(agreement_path).readlines()]  # 长度 100
-
+captions = [x.strip() for x in open(caption_path).readlines()]
 grid_size = 24  # depends on llava vision tower
 
 all_com = []
@@ -263,7 +266,7 @@ for i, flag in enumerate(agreement):
     if flag != 1.0:
         continue 
     print(f"Processing sample {i}...")
-
+    caption = captions[i]
     img_path = f"{BASE}/world-{i}.png"
 
     entity1 = world[i]["entities"][0]
@@ -271,11 +274,11 @@ for i, flag in enumerate(agreement):
 
     gt_mask = gt_bbox_to_patch_mask(entity1, entity2, grid_size)
 
-    attn = extract_input_cross_attention_maps(img_path, "the circle is left of the square")
+    attn = extract_input_cross_attention_maps(img_path, caption)
     # print("attn shape:", attn.shape)
     # print("before renorm:",attn.max(), attn.mean(), attn.min())
     #normed = threshold_topk_by_gt_area(attn, gt_mask)
-    normed = renormalize_cross_attention_with_pool_sharpen(attn)
+    normed = renormalize_cross_attention_with_pool(attn)
     # print("atten shape:", normed.shape)
     # print("after renorm:", normed.max(), normed.mean(), normed.min())
     attn_map = reshape_attention_to_grid(normed, grid_size)
