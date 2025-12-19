@@ -36,7 +36,7 @@ model.eval()
 # 2. sample & prompt
 # =========================
 BASE = "/home/maqima/VLM-Visualizer/data/spatial_twoshapes/agreement/relational/test/shard0"
-sample_idx = 2
+sample_idx = 3
 caption_path = f"{BASE}/caption.txt"
 captions = [x.strip() for x in open(caption_path).readlines()]
 caption = captions[sample_idx]

@@ -10,7 +10,8 @@ from llava.conversation import conv_templates, SeparatorStyle
 from llava.model.builder import load_pretrained_model
 from llava.utils import disable_torch_init
 from llava.mm_utils import process_images, tokenizer_image_token, get_model_name_from_path
-
+import matplotlib.pyplot as plt
+import cv2
 from utils import (
     load_image,
     aggregate_llm_attention, aggregate_vit_attention,
@@ -35,6 +36,59 @@ tokenizer, model, image_processor, context_len = load_pretrained_model(
     attn_implementation="eager",
     torch_dtype=torch.bfloat16
 )
+
+
+
+def upsample_grid_to_image(grid, image_size):
+    """
+    grid: [H, W] (e.g. 24x24)
+    return: [image_size, image_size]
+    """
+    grid_np = grid.cpu().numpy()
+    up = cv2.resize(
+        grid_np,
+        (image_size, image_size),
+        interpolation=cv2.INTER_NEAREST
+    )
+    return up
+
+
+def visualize_attention_and_gt(image, attn_map, gt_mask, save_path=None):
+    """
+    image: PIL image
+    attn_map: [24,24], float
+    gt_mask: [24,24], binary
+    """
+    image_np = np.array(image)
+    H, W, _ = image_np.shape
+
+    attn_up = upsample_grid_to_image(attn_map, H)
+    gt_up = upsample_grid_to_image(gt_mask, H)
+
+    fig, axes = plt.subplots(1, 3, figsize=(15, 5))
+
+    # 原图
+    axes[0].imshow(image_np)
+    axes[0].set_title("Original Image")
+    axes[0].axis("off")
+
+    # GT mask
+    axes[1].imshow(image_np)
+    axes[1].imshow(gt_up, cmap="Reds", alpha=0.6)
+    axes[1].set_title("GT Mask")
+    axes[1].axis("off")
+
+    # Attention
+    axes[2].imshow(image_np)
+    im = axes[2].imshow(attn_up, cmap="jet", alpha=0.6)
+    axes[2].set_title("Cross-Attention")
+    axes[2].axis("off")
+    plt.colorbar(im, ax=axes[2], fraction=0.046)
+
+    plt.tight_layout()
+    if save_path is not None:
+        plt.savefig(save_path, dpi=200)
+    plt.show()
 
 def renormalize_cross_attention_with_pool(cross_attn_maps):
     """
@@ -141,7 +195,16 @@ def extract_input_cross_attention_maps(image_path_or_url, prompt_text):
         )
         #print(model.get_vision_tower().num_patches)
         
+    input_token_ids = input_ids[0].tolist()
 
+    input_tokens = []
+    for tid in input_token_ids:
+        if tid == IMAGE_TOKEN_INDEX:
+            input_tokens.append("<image>")
+        else:
+            input_tokens.append(tokenizer.convert_ids_to_tokens(tid))
+    print("Input tokens:", input_tokens)
+    print("Input token length:", len(input_tokens))
     # Extract LLM attention matrix
     aggregated_prompt_attention = []
     for layer in outputs["attentions"][0]:
@@ -153,18 +216,31 @@ def extract_input_cross_attention_maps(image_path_or_url, prompt_text):
         aggregated_prompt_attention.append(cur)
 
     aggregated_prompt_attention = torch.stack(aggregated_prompt_attention).mean(dim=0)
+    print("Aggregated prompt attention shape:", aggregated_prompt_attention.shape)
     llm_attn_matrix = heterogenous_stack(
         [torch.tensor([1])]
         + list(aggregated_prompt_attention)
         + list(map(aggregate_llm_attention, outputs["attentions"]))
     )
-
+    print(tokenizer(prompt.split("<image>")[1].split("ASSISTANT:")[0], return_tensors='pt'))
+    print("prompt extracted:", prompt.split("<image>")[1].split("ASSISTANT:")[0])
+    # find these indices in input tokens
+    extracted_token_ids = tokenizer(
+        prompt.split("<image>")[1].split("ASSISTANT:")[0],
+        return_tensors='pt'
+    )["input_ids"][0].tolist()
+    print("Extracted token IDs:", extracted_token_ids)
+    print("Extracted tokens:", tokenizer.convert_ids_to_tokens(extracted_token_ids))
+    extracted_token_start = input_ids[0].tolist().index(extracted_token_ids[0])
+    extracted_token_end = extracted_token_start + len(extracted_token_ids)
+    print("Extracted token indices in input:", extracted_token_start, extracted_token_end)
+    print("LLM attention matrix shape:", llm_attn_matrix.shape)
     # Extract cross-attention maps
-    vision_token_start = len(tokenizer(prompt.split("<image>")[0], return_tensors='pt')["input_ids"][0])
+    vision_token_start = len(tokenizer(prompt, return_tensors='pt')["input_ids"][0])
     vision_token_end = vision_token_start + model.get_vision_tower().num_patches
 
-    cross_attention_maps = llm_attn_matrix[vision_token_start:vision_token_end, :vision_token_start]
-
+    cross_attention_maps = llm_attn_matrix[vision_token_start:vision_token_end, extracted_token_start:extracted_token_end]
+    print("Cross-attention maps shape:", cross_attention_maps.shape)
     return cross_attention_maps
 
 def gt_bbox_to_patch_mask(entity1, entity2, grid_size, image_size=64):
@@ -189,10 +265,10 @@ def gt_bbox_to_patch_mask(entity1, entity2, grid_size, image_size=64):
     mask = torch.zeros(grid_size, grid_size)
     mask[py_min:py_max+1, px_min:px_max+1] = 1
 
-    xmin = entity1["bounding_box"]["topleft"]["x"] * image_size
-    ymin = entity1["bounding_box"]["topleft"]["y"] * image_size
-    xmax = entity1["bounding_box"]["bottomright"]["x"] * image_size
-    ymax = entity1["bounding_box"]["bottomright"]["y"] * image_size
+    xmin = entity2["bounding_box"]["topleft"]["x"] * image_size
+    ymin = entity2["bounding_box"]["topleft"]["y"] * image_size
+    xmax = entity2["bounding_box"]["bottomright"]["x"] * image_size
+    ymax = entity2["bounding_box"]["bottomright"]["y"] * image_size
 
     px_min = int(xmin / patch_size)
     py_min = int(ymin / patch_size)
@@ -235,7 +311,6 @@ def compute_iou(attn_map, gt_mask, grid_size, topk_ratio=0.1):
     k = int(grid_size * grid_size * topk_ratio)
     flat = attn_map.flatten()
     thresh = torch.topk(flat, k).values.min()
-
     attn_binary = (flat >= thresh).float().reshape(grid_size, grid_size)
 
     intersection = (attn_binary * gt_mask).sum().item()
@@ -261,10 +336,16 @@ grid_size = 24  # depends on llava vision tower
 all_com = []
 all_iou = []
 
+visualized = False
+
 for i, flag in enumerate(agreement):
 
     if flag != 1.0:
-        continue 
+        continue
+    # if i > 2:
+    #     break
+    # if visualized and i >= 10:
+    #     break
     print(f"Processing sample {i}...")
     caption = captions[i]
     img_path = f"{BASE}/world-{i}.png"
@@ -282,6 +363,17 @@ for i, flag in enumerate(agreement):
     # print("atten shape:", normed.shape)
     # print("after renorm:", normed.max(), normed.mean(), normed.min())
     attn_map = reshape_attention_to_grid(normed, grid_size)
+    
+    image = load_image(img_path)
+    #os.makedirs("visualizations", exist_ok=True)
+    # visualize_attention_and_gt(
+    #     image=image,
+    #     attn_map=attn_map,
+    #     gt_mask=gt_mask,
+    #     save_path=f"visualizationsvis_sample_{i}.png"
+    # )
+
+    # visualized = True
 
     com = compute_center_of_mass_distance(attn_map, gt_mask, grid_size)
     iou = compute_iou(attn_map, gt_mask, grid_size)
