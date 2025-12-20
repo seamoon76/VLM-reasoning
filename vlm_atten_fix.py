@@ -54,9 +54,7 @@ def upsample_grid_to_image(grid, image_size):
 def visualize(image, attn_map, title):
     image_np = np.array(image)
     H = image_np.shape[0]
-    print("attn_map shape:", attn_map.shape)
     attn_up = upsample_grid_to_image(attn_map, H)
-    print("upsampled attn_map shape:", attn_up.shape)
     plt.figure(figsize=(5, 5))
     plt.imshow(image_np)
     plt.imshow(attn_up, cmap="jet", alpha=0.6)
@@ -263,6 +261,54 @@ def compute_x_wasserstein(attn_map, gt_mask):
     # W1 distance
     return torch.sum(torch.abs(cdf_p - cdf_q)).item()
 
+def build_right_relation_gt_x(mask_left, mask_right):
+    """
+    mask_left, mask_right: [H, W], binary {0,1}
+    语义： left_entity is to the right of right_entity
+    返回:
+        gt_relation_x: [W], 概率分布
+    """
+    # x-axis projection
+    p = mask_left.sum(dim=0).float()   # [W]
+    q = mask_right.sum(dim=0).float()  # [W]
+
+    # normalize to distributions
+    p = p / (p.sum() + 1e-6)
+    q = q / (q.sum() + 1e-6)
+
+    # CDF difference encodes "right-of"
+    cdf_p = torch.cumsum(p, dim=0)
+    cdf_q = torch.cumsum(q, dim=0)
+
+    # only keep positive evidence of "p is to the right of q"
+    gt_relation_x = torch.relu(cdf_p - cdf_q)
+
+    # normalize again
+    gt_relation_x = gt_relation_x / (gt_relation_x.sum() + 1e-6)
+
+    return gt_relation_x
+
+def get_attn_x_distribution(attn_map):
+    """
+    attn_map: [H, W], attention map for 'right' token
+    return:
+        attn_x: [W], 概率分布
+    """
+    attn_x = attn_map.sum(dim=0)
+    attn_x = attn_x / (attn_x.sum() + 1e-6)
+    return attn_x
+
+def compute_x_wasserstein_from_distributions(p, q):
+    """
+    p, q: [W], probability distributions
+    return:
+        W1 distance (scalar)
+    """
+    cdf_p = torch.cumsum(p, dim=0)
+    cdf_q = torch.cumsum(q, dim=0)
+
+    return torch.sum(torch.abs(cdf_p - cdf_q)).item()
+
 BASE = "/home/maqima/VLM-Visualizer/data/spatial_twoshapes/agreement/relational/test/shard0"
 json_path = f"{BASE}/world_model.json"
 sample_idx = 1
@@ -319,3 +365,19 @@ pentagon_wasserstein = compute_x_wasserstein(pentagon_map, mask_pentagon)
 
 print(f"Ellipse - COM distance: {ellipse_com_dist:.2f}, IoU: {ellipse_iou:.4f}, Soft IoU: {ellipse_soft_iou:.4f}, Wasserstein: {ellipse_wasserstein:.4f}")
 print(f"Pentagon - COM distance: {pentagon_com_dist:.2f}, IoU: {pentagon_iou:.4f}, Soft IoU: {pentagon_soft_iou:.4f}, Wasserstein: {pentagon_wasserstein:.4f}")
+
+# 1. build GT relation distribution on x-axis
+gt_relation_x = build_right_relation_gt_x(
+    mask_left=mask_pentagon,
+    mask_right=mask_ellipse
+)
+
+# 2. get attention x distribution for "right" token
+attn_x = get_attn_x_distribution(right_map)
+
+# 3. compute Wasserstein distance
+right_x_wasserstein = compute_x_wasserstein_from_distributions(
+    attn_x, gt_relation_x
+)
+
+print(f"Right token x-axis Wasserstein: {right_x_wasserstein:.4f}")
