@@ -24,7 +24,7 @@ pip install -r requirements.txt --no-build-isolation
 # if you need flush attention, downgrade setuptools to 69.5.1, download wheels by: wget https://github.com/mjun0812/flash-attention-prebuild-wheels/releases/download/v0.3.18/flash_attn-2.7.4+cu128torch2.7-cp310-cp310-linux_x86_64.whl and use pip install from wheels
 
 # apply a node with GPU
-srun -A deep_learning -G 1 -t 00:10:00 --pty /bin/bash
+srun -A deep_learning -G 1 -t 01:00:00 --pty /bin/bash
 
 # set the scratch home for model storage
 export HF_HOME=/work/scratch/maqima/

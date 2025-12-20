@@ -55,6 +55,7 @@ def visualize(image, attn_map, title):
     image_np = np.array(image)
     H = image_np.shape[0]
     attn_up = upsample_grid_to_image(attn_map, H)
+    attn_up = attn_up / (attn_up.max() + 1e-6)
     plt.figure(figsize=(5, 5))
     plt.imshow(image_np)
     plt.imshow(attn_up, cmap="jet", alpha=0.6)
@@ -181,11 +182,12 @@ def pool_attention(cross_attn, token_positions, mode="mean"):
     """
     selected = cross_attn[:, token_positions]
     if mode == "mean":
-        return selected.mean(dim=1)
+        selected = selected.mean(dim=1)
     elif mode == "sum":
-        return selected.sum(dim=1)
+        selected =selected.sum(dim=1)
     else:
         raise ValueError
+    return selected
 
 def gt_bbox_to_patch_mask(entity1, grid_size, image_size=64):
     """
@@ -261,17 +263,16 @@ def compute_x_wasserstein(attn_map, gt_mask):
     # W1 distance
     return torch.sum(torch.abs(cdf_p - cdf_q)).item()
 
-def build_right_relation_gt_x(mask_left, mask_right):
+def build_relation_gt_x(mask_entity1, mask_entity2, relation):
     """
-    mask_left, mask_right: [H, W], binary {0,1}
-    语义： left_entity is to the right of right_entity
-    返回:
-        gt_relation_x: [W], 概率分布
+    Build ground-truth relation distribution on x-axis.
+    relation: str, "right" or "left"
     """
     # x-axis projection
-    p = mask_left.sum(dim=0).float()   # [W]
-    q = mask_right.sum(dim=0).float()  # [W]
-
+    p = mask_entity1.sum(dim=0).float()   # [W]
+    q = mask_entity2.sum(dim=0).float()  # [W]
+    if relation == "left":
+        p, q = q, p
     # normalize to distributions
     p = p / (p.sum() + 1e-6)
     q = q / (q.sum() + 1e-6)
@@ -308,76 +309,216 @@ def compute_x_wasserstein_from_distributions(p, q):
     cdf_q = torch.cumsum(q, dim=0)
 
     return torch.sum(torch.abs(cdf_p - cdf_q)).item()
-
+import json
 BASE = "/home/maqima/VLM-Visualizer/data/spatial_twoshapes/agreement/relational/test/shard0"
 json_path = f"{BASE}/world_model.json"
-sample_idx = 1
-image_path = f"{BASE}/world-{sample_idx}.png"
-prompt = "a pentagon is to the right of an ellipse ."
-import json
-world = json.load(open(json_path))
-entity1 = world[sample_idx]["entities"][0]
-entity2 = world[sample_idx]["entities"][1]
-mask_pentagon = gt_bbox_to_patch_mask(entity1, grid_size=24)
-mask_ellipse = gt_bbox_to_patch_mask(entity2, grid_size=24)
-cross_attn, input_tokens, image = extract_prompt_level_cross_attention(
-    image_path, prompt
-)
-# replace nan in cross_attn as 0
-cross_attn = torch.nan_to_num(cross_attn, nan=0.0)
-print("number of input tokens:", len(input_tokens))
-print("Cross-attention shape:", cross_attn.shape)  # [num_patches, num_prompt_tokens]
-grid_size = 24
+# save metrics for mean analysis
+entity1_com_dists = []
+entity2_com_dists = []
+entity1_ious = []
+entity2_ious = []
+entity1_soft_ious = []
+entity2_soft_ious = []
+entity1_wassersteins = []
+entity2_wassersteins = []
+relation_x_wassersteins = []
 
-# ---- entity / relation token indices ----
-pentagon_pos = find_token_positions(input_tokens, ["▁pent", "agon"])
-right_pos = find_token_positions(input_tokens, ["▁right"])
-ellipse_pos = find_token_positions(input_tokens, ["▁el", "lipse"])
+for sample_idx in [1,3,4,9,10,11,25,26,29,49,50,52,91,99]:
+    image_path = f"{BASE}/world-{sample_idx}.png"
+    if sample_idx == 1:
+        prompt = "a pentagon is to the right of an ellipse ."
+    elif sample_idx == 3:
+        prompt = "a red triangle is to the left of a blue semicircle ."
+    elif sample_idx == 4:
+        prompt = "a triangle is to the right of an ellipse ."
+    elif sample_idx == 9:
+        prompt = "a cross is to the right of a semicircle ."
+    elif sample_idx == 10:
+        prompt = "a cross is to the right of a rectangle ."
+    elif sample_idx == 11:
+        prompt = "a blue circle is to the right of a semicircle ."
+    elif sample_idx == 25:
+        prompt = "a blue semicircle is to the right of a yellow cross ."
+    elif sample_idx == 26:
+        prompt = "a gray cross is to the right of a green semicircle ."
+    elif sample_idx == 29:
+        prompt = "a blue ellipse is to the right of a yellow square ."
+    elif sample_idx == 49:
+        prompt = "a magenta pentagon is to the left of a magenta circle ."
+    elif sample_idx == 50:
+        prompt = "a pentagon is to the right of a magenta circle ."
+    elif sample_idx == 52:
+        prompt = "a green cross is to the left of a magenta circle ."
+    elif sample_idx == 91:
+        prompt = "a yellow square is to the right of a blue ellipse ."
+    elif sample_idx == 99:
+        prompt = "a magenta square is to the left of a magenta circle ."
+    else:
+        raise ValueError("Only sample_idx 1,3,4 are supported in this script.")
+    
+    world = json.load(open(json_path))
+    entity1 = world[sample_idx]["entities"][0]
+    entity1_name = entity1["shape"]["name"]
+    entity2 = world[sample_idx]["entities"][1]
+    entity2_name = entity2["shape"]["name"]
+    mask_entity1 = gt_bbox_to_patch_mask(entity1, grid_size=24)
+    mask_entity2 = gt_bbox_to_patch_mask(entity2, grid_size=24)
+    cross_attn, input_tokens, image = extract_prompt_level_cross_attention(
+        image_path, prompt
+    )
+    # replace nan in cross_attn as 0
+    cross_attn = torch.nan_to_num(cross_attn, nan=0.0)
+    print("number of input tokens:", len(input_tokens))
+    print("Cross-attention shape:", cross_attn.shape)  # [num_patches, num_prompt_tokens]
+    grid_size = 24
+    relation = "right" if "right" in prompt else "left"
+    # ---- entity / relation token indices ----
+    if sample_idx == 1:
+        # pentagon, right, ellipse
+        entity1_pos = find_token_positions(input_tokens, ["▁pent", "agon"])
+        relation_pos = find_token_positions(input_tokens, ["▁right"])
+        entity2_pos = find_token_positions(input_tokens, ["▁el", "lipse"])
+    elif sample_idx == 3:
+        # triangle, left, semicircle
+        entity1_pos = find_token_positions(input_tokens, ["▁triangle"])
+        relation_pos = find_token_positions(input_tokens, ["▁left"])
+        entity2_pos = find_token_positions(input_tokens, ["▁sem", "ic", "irc", "le"])
+    elif sample_idx == 4:
+        # triangle, right, ellipse
+        entity1_pos = find_token_positions(input_tokens, ["▁triangle"])
+        relation_pos = find_token_positions(input_tokens, ["▁right"])
+        entity2_pos = find_token_positions(input_tokens, ["▁el", "lipse"])
+    elif sample_idx == 9:
+        # cross, right, semicircle
+        entity1_pos = find_token_positions(input_tokens, ["▁cross"])
+        relation_pos = find_token_positions(input_tokens, ["▁right"])
+        entity2_pos = find_token_positions(input_tokens, ["▁sem", "ic", "irc", "le"])
+    elif sample_idx == 10:
+        # cross, right, rectangle
+        entity1_pos = find_token_positions(input_tokens, ["▁cross"])
+        relation_pos = find_token_positions(input_tokens, ["▁right"])
+        entity2_pos = find_token_positions(input_tokens, ["▁rectangle"])
+    elif sample_idx == 11:
+        # circle, right, semicircle
+        entity1_pos = find_token_positions(input_tokens, ["▁blue", "▁circle"])
+        relation_pos = find_token_positions(input_tokens, ["▁right"])
+        entity2_pos = find_token_positions(input_tokens, ["▁sem", "ic", "irc", "le"])
+    elif sample_idx == 25:
+        # semicircle, right, cross
+        entity1_pos = find_token_positions(input_tokens, ["▁blue", "▁sem", "ic", "irc", "le"])
+        relation_pos = find_token_positions(input_tokens, ["▁right"])
+        entity2_pos = find_token_positions(input_tokens, ["▁yellow", "▁cross"])
+    elif sample_idx == 26:
+        # cross, right, semicircle
+        entity1_pos = find_token_positions(input_tokens, ["▁gray", "▁cross"])
+        relation_pos = find_token_positions(input_tokens, ["▁right"])
+        entity2_pos = find_token_positions(input_tokens, ["▁green", "▁sem", "ic", "irc", "le"])
+    elif sample_idx == 29:
+        # ellipse, right, square
+        entity1_pos = find_token_positions(input_tokens, ["▁blue", "▁el", "lipse"])
+        relation_pos = find_token_positions(input_tokens, ["▁right"])
+        entity2_pos = find_token_positions(input_tokens, ["▁yellow", "▁square"])
+    elif sample_idx == 49:
+        # pentagon, left, circle
+        entity1_pos = find_token_positions(input_tokens, ["▁magenta", "▁pent", "agon"])
+        relation_pos = find_token_positions(input_tokens, ["▁left"])
+        entity2_pos = find_token_positions(input_tokens, ["▁magenta", "▁circle"])
+    elif sample_idx == 50:
+        # pentagon, right, circle
+        entity1_pos = find_token_positions(input_tokens, ["▁pent", "agon"])
+        relation_pos = find_token_positions(input_tokens, ["▁right"])
+        entity2_pos = find_token_positions(input_tokens, ["▁magenta", "▁circle"])
+    elif sample_idx == 52:
+        # cross, left, circle
+        entity1_pos = find_token_positions(input_tokens, ["▁green", "▁cross"])
+        relation_pos = find_token_positions(input_tokens, ["▁left"])
+        entity2_pos = find_token_positions(input_tokens, ["▁magenta", "▁circle"])
+    elif sample_idx == 91:
+        # square, right, ellipse
+        entity1_pos = find_token_positions(input_tokens, ["▁yellow", "▁square"])
+        relation_pos = find_token_positions(input_tokens, ["▁right"])
+        entity2_pos = find_token_positions(input_tokens, ["▁blue", "▁el", "lipse"])
+    elif sample_idx == 99:
+        # square, left, circle
+        entity1_pos = find_token_positions(input_tokens, ["▁magenta", "▁square"])
+        relation_pos = find_token_positions(input_tokens, ["▁left"])
+        entity2_pos = find_token_positions(input_tokens, ["▁magenta", "▁circle"])
 
-print("pentagon tokens:", pentagon_pos)
-print("right tokens:", right_pos)
-print("ellipse tokens:", ellipse_pos)
+    else:
+        raise ValueError("Only sample_idx 1,3,4 are supported in this script.")
+    print(f"{entity1_name} tokens:", entity1_pos)
+    print(f"{relation} tokens:", relation_pos)
+    print(f"{entity2_name} tokens:", entity2_pos)
 
-# ---- pooled attentions ----
-ellipse_attn = pool_attention(cross_attn, ellipse_pos)
-right_attn = pool_attention(cross_attn, right_pos)
-pentagon_attn = pool_attention(cross_attn, pentagon_pos)
+    # ---- pooled attentions ----
+    entity1_attn = pool_attention(cross_attn, entity1_pos)
+    entity2_attn = pool_attention(cross_attn, entity2_pos)
+    relation_attn = pool_attention(cross_attn, relation_pos)
 
-# ---- reshape ----
-ellipse_map = ellipse_attn.reshape(grid_size, grid_size)
-right_map = right_attn.reshape(grid_size, grid_size)
-pentagon_map = pentagon_attn.reshape(grid_size, grid_size)
 
-# ---- visualize ----
-visualize(image, ellipse_map, "ellipse attention")
-visualize(image, right_map, "right (relation) attention")
-visualize(image, pentagon_map, "pentagon attention")
+    # ---- reshape ----
+    entity1_map = entity1_attn.reshape(grid_size, grid_size)
+    entity2_map = entity2_attn.reshape(grid_size, grid_size)
+    relation_map = relation_attn.reshape(grid_size, grid_size)
 
-# ---- compute metrics ----
-ellipse_com_dist = compute_center_of_mass_distance(ellipse_map, mask_ellipse, grid_size)
-ellipse_iou = compute_iou(ellipse_map, mask_ellipse, grid_size)
-pentagon_com_dist = compute_center_of_mass_distance(pentagon_map, mask_pentagon, grid_size)
-pentagon_iou = compute_iou(pentagon_map, mask_pentagon, grid_size)
-ellipse_soft_iou = compute_soft_iou(ellipse_map, mask_ellipse)
-pentagon_soft_iou = compute_soft_iou(pentagon_map, mask_pentagon)
-ellipse_wasserstein = compute_x_wasserstein(ellipse_map, mask_ellipse)
-pentagon_wasserstein = compute_x_wasserstein(pentagon_map, mask_pentagon)
+    save_dir = "left_right_analysis_outputs"
+    os.makedirs(save_dir, exist_ok=True)
+    # ---- visualize ----
+    visualize(image, entity1_map, f"{save_dir}/{sample_idx} {entity1_name} attention")
+    visualize(image, relation_map, f"{save_dir}/{sample_idx} {relation} attention")
+    visualize(image, entity2_map, f"{save_dir}/{sample_idx} {entity2_name} attention")
+    # ---- compute metrics ----
+    entity2_com_dist = compute_center_of_mass_distance(entity2_map, mask_entity2, grid_size)
+    entity2_iou = compute_iou(entity2_map, mask_entity2, grid_size)
+    entity1_com_dist = compute_center_of_mass_distance(entity1_map, mask_entity1, grid_size)
+    entity1_iou = compute_iou(entity1_map, mask_entity1, grid_size)
+    entity2_soft_iou = compute_soft_iou(entity2_map, mask_entity2)
+    entity1_soft_iou = compute_soft_iou(entity1_map, mask_entity1)
+    entity2_wasserstein = compute_x_wasserstein(entity2_map, mask_entity2)
+    entity1_wasserstein = compute_x_wasserstein(entity1_map, mask_entity1)
+    print("sample idx:", sample_idx)
+    print(f"Entity1 - COM distance: {entity1_com_dist:.2f}, IoU: {entity1_iou:.4f}, Soft IoU: {entity1_soft_iou:.4f}, Wasserstein: {entity1_wasserstein:.4f}")
+    print(f"Entity2 - COM distance: {entity2_com_dist:.2f}, IoU: {entity2_iou:.4f}, Soft IoU: {entity2_soft_iou:.4f}, Wasserstein: {entity2_wasserstein:.4f}")
+    # write into a txt file
+    with open(f"{save_dir}/metrics_sample_{sample_idx}.txt", "w") as f:
+        f.write(f"sample idx: {sample_idx}\n")
+        f.write(f"Entity1 - COM distance: {entity1_com_dist:.2f}, IoU: {entity1_iou:.4f}, Soft IoU: {entity1_soft_iou:.4f}, Wasserstein: {entity1_wasserstein:.4f}\n")
+        f.write(f"Entity2 - COM distance: {entity2_com_dist:.2f}, IoU: {entity2_iou:.4f}, Soft IoU: {entity2_soft_iou:.4f}, Wasserstein: {entity2_wasserstein:.4f}\n")
+    # 1. build GT relation distribution on x-axis
+    gt_relation_x = build_relation_gt_x(
+        mask_entity1, mask_entity2, relation
+    )
 
-print(f"Ellipse - COM distance: {ellipse_com_dist:.2f}, IoU: {ellipse_iou:.4f}, Soft IoU: {ellipse_soft_iou:.4f}, Wasserstein: {ellipse_wasserstein:.4f}")
-print(f"Pentagon - COM distance: {pentagon_com_dist:.2f}, IoU: {pentagon_iou:.4f}, Soft IoU: {pentagon_soft_iou:.4f}, Wasserstein: {pentagon_wasserstein:.4f}")
+    # 2. get attention x distribution for "right" token
+    attn_x = get_attn_x_distribution(relation_map)
 
-# 1. build GT relation distribution on x-axis
-gt_relation_x = build_right_relation_gt_x(
-    mask_left=mask_pentagon,
-    mask_right=mask_ellipse
-)
+    # 3. compute Wasserstein distance
+    relation_x_wasserstein = compute_x_wasserstein_from_distributions(
+        attn_x, gt_relation_x
+    )
 
-# 2. get attention x distribution for "right" token
-attn_x = get_attn_x_distribution(right_map)
+    print(f"Right token x-axis Wasserstein: {relation_x_wasserstein:.4f}")
+    with open(f"{save_dir}/metrics_sample_{sample_idx}.txt", "a") as f:
+        f.write(f"Right token x-axis Wasserstein: {relation_x_wasserstein:.4f}\n")
 
-# 3. compute Wasserstein distance
-right_x_wasserstein = compute_x_wasserstein_from_distributions(
-    attn_x, gt_relation_x
-)
-
-print(f"Right token x-axis Wasserstein: {right_x_wasserstein:.4f}")
+    # ---- collect for mean analysis ----
+    entity1_com_dists.append(entity1_com_dist)
+    entity2_com_dists.append(entity2_com_dist)
+    entity1_ious.append(entity1_iou)
+    entity2_ious.append(entity2_iou)
+    entity1_soft_ious.append(entity1_soft_iou)
+    entity2_soft_ious.append(entity2_soft_iou)
+    entity1_wassersteins.append(entity1_wasserstein)
+    entity2_wassersteins.append(entity2_wasserstein)
+    relation_x_wassersteins.append(relation_x_wasserstein)
+# ---- mean analysis ----
+num_samples = len(entity1_com_dists)
+print("=== Mean Analysis over all samples ===")
+print(f"Entity1 - COM distance: {np.mean(entity1_com_dists):.2f}, IoU: {np.mean(entity1_ious):.4f}, Soft IoU: {np.mean(entity1_soft_ious):.4f}, Wasserstein: {np.mean(entity1_wassersteins):.4f}")
+print(f"Entity2 - COM distance: {np.mean(entity2_com_dists):.2f}, IoU: {np.mean(entity2_ious):.4f}, Soft IoU: {np.mean(entity2_soft_ious):.4f}, Wasserstein: {np.mean(entity2_wassersteins):.4f}")
+print(f"Relation token x-axis Wasserstein: {np.mean(relation_x_wassersteins):.4f}")
+with open(f"{save_dir}/mean_analysis.txt", "w") as f:
+    f.write("=== Mean Analysis over all samples ===\n")
+    f.write(f"Entity1 - COM distance: {np.mean(entity1_com_dists):.2f}, IoU: {np.mean(entity1_ious):.4f}, Soft IoU: {np.mean(entity1_soft_ious):.4f}, Wasserstein: {np.mean(entity1_wassersteins):.4f}\n")
+    f.write(f"Entity2 - COM distance: {np.mean(entity2_com_dists):.2f}, IoU: {np.mean(entity2_ious):.4f}, Soft IoU: {np.mean(entity2_soft_ious):.4f}, Wasserstein: {np.mean(entity2_wassersteins):.4f}\n")
+    f.write(f"Relation token x-axis Wasserstein: {np.mean(relation_x_wassersteins):.4f}\n")
