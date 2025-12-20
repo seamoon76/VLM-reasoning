@@ -331,6 +331,8 @@ for sample_idx in [1,3,4,9,10,11,25,26,29,49,50,52,91,99]:
         prompt = "a red triangle is to the left of a blue semicircle ."
     elif sample_idx == 4:
         prompt = "a triangle is to the right of an ellipse ."
+    # elif sample_idx == 5:
+    #     prompt = "a yellow rectangle is above a circle ."
     elif sample_idx == 9:
         prompt = "a cross is to the right of a semicircle ."
     elif sample_idx == 10:
@@ -388,6 +390,11 @@ for sample_idx in [1,3,4,9,10,11,25,26,29,49,50,52,91,99]:
         entity1_pos = find_token_positions(input_tokens, ["▁triangle"])
         relation_pos = find_token_positions(input_tokens, ["▁right"])
         entity2_pos = find_token_positions(input_tokens, ["▁el", "lipse"])
+    # elif sample_idx == 5:
+    #     # rectangle, above, circle
+    #     entity1_pos = find_token_positions(input_tokens, ["▁yellow", "▁rectangle"])
+    #     relation_pos = find_token_positions(input_tokens, ["▁above"])
+    #     entity2_pos = find_token_positions(input_tokens, ["▁circle"])
     elif sample_idx == 9:
         # cross, right, semicircle
         entity1_pos = find_token_positions(input_tokens, ["▁cross"])
@@ -484,6 +491,8 @@ for sample_idx in [1,3,4,9,10,11,25,26,29,49,50,52,91,99]:
         f.write(f"sample idx: {sample_idx}\n")
         f.write(f"Entity1 - COM distance: {entity1_com_dist:.2f}, IoU: {entity1_iou:.4f}, Soft IoU: {entity1_soft_iou:.4f}, Wasserstein: {entity1_wasserstein:.4f}\n")
         f.write(f"Entity2 - COM distance: {entity2_com_dist:.2f}, IoU: {entity2_iou:.4f}, Soft IoU: {entity2_soft_iou:.4f}, Wasserstein: {entity2_wasserstein:.4f}\n")
+    if sample_idx == 5:
+        continue    # skip relation analysis for "above" case
     # 1. build GT relation distribution on x-axis
     gt_relation_x = build_relation_gt_x(
         mask_entity1, mask_entity2, relation
