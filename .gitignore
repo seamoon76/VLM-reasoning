@@ -153,3 +153,5 @@ data/
 
 visualizations/
 left_right_analysis_outputs/
+output_token_attention_over_image
+question_input_output_token_attention_over_image

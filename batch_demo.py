@@ -245,26 +245,42 @@ def process_one_image_question(image_path_or_url, prompt_text, output_prefix="ou
 # 3) batch process
 ###############################################
 
-question_list = [
-    "Is there anything in the top left corner?",
-    "What is the positional relationship between the two figures in the image? e.g., top-bottom relationship, left-right relationship.",
-    "Is there anything in the top left corner?",
-    "What is the positional relationship between the two figures in the image? e.g., top-bottom relationship, left-right relationship."
-    # ...
-]
+# question_list = [
+#     "Is there anything in the top left corner?",
+#     "What is the positional relationship between the two figures in the image? e.g., top-bottom relationship, left-right relationship.",
+#     "Is there anything in the top left corner?",
+#     "What is the positional relationship between the two figures in the image? e.g., top-bottom relationship, left-right relationship."
+#     # ...
+# ]
 
-image_path_list = [
-    "/home/maqima/VLM-Visualizer/data/2.png",
-    "/home/maqima/VLM-Visualizer/data/1.png",
-    "/home/maqima/VLM-Visualizer/data/3.png",
-    "/home/maqima/VLM-Visualizer/data/4.png"
-    # ...
-]
+# image_path_list = [
+#     "/home/maqima/VLM-Visualizer/data/2.png",
+#     "/home/maqima/VLM-Visualizer/data/1.png",
+#     "/home/maqima/VLM-Visualizer/data/3.png",
+#     "/home/maqima/VLM-Visualizer/data/4.png"
+#     # ...
+# ]
+import json
+import numpy as np
+
+BASE = "/home/maqima/VLM-Visualizer/data/spatial_twoshapes/agreement/relational/test/shard0"
+agreement_path = f"{BASE}/agreement.txt"
+caption_path = f"{BASE}/caption.txt"
+agreement = [float(x.strip()) for x in open(agreement_path).readlines()]  # 长度 100
+captions = [x.strip() for x in open(caption_path).readlines()]
+filtered_ids = [i for i, a in enumerate(agreement) if a == 1.0]
+# generate question_list from captions
+question_list = []
+image_path_list = []
+for i in filtered_ids:
+    question_list.append(f"What is the positional relationship between the two shapes in the image?")
+    image_path_list.append(f"{BASE}/world-{i}.png")
 
 assert len(question_list) == len(image_path_list)
-
+save_dir = "question_input_output_token_attention_over_image"
+os.makedirs(save_dir, exist_ok=True)
 for i, (q, img) in enumerate(zip(question_list, image_path_list)):
-    prefix = f"sample_{i}"
+    prefix = f"{save_dir}/sample_{filtered_ids[i]}"
     print(f"\n==== Processing {i}: {img} ====\n")
     process_one_image_question(img, q, output_prefix=prefix)
 
