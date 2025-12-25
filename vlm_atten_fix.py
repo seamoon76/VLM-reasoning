@@ -19,7 +19,7 @@ from llava.model.builder import load_pretrained_model
 from llava.mm_utils import process_images, tokenizer_image_token
 from llava.utils import disable_torch_init
 
-from utils import load_image   # 你原来就有
+from utils import load_image, aggregate_vit_attention
 
 # =====================
 # Model loading
@@ -47,7 +47,7 @@ model.eval()
 # =====================
 
 def upsample_grid_to_image(grid, image_size):
-    grid_np = grid.cpu().numpy()
+    grid_np = grid.detach().float().cpu().numpy()
     return cv2.resize(grid_np, (image_size, image_size), interpolation=cv2.INTER_NEAREST)
 
 
@@ -65,6 +65,71 @@ def visualize(image, attn_map, title):
     plt.savefig(f"{title.replace(' ', '_')}.png")
     plt.show()
     plt.close()
+
+def visualize_patch_self_attn(image, attn_map, title):
+    print("Visualizing patch self-attention:", title)
+    image_np = np.array(image)
+    H = image_np.shape[0]
+    attn_up = upsample_grid_to_image(attn_map, H)
+    attn_up = attn_up / (attn_up.max() + 1e-6)
+
+    plt.figure(figsize=(5, 5))
+    plt.imshow(image_np)
+    plt.imshow(attn_up, cmap="jet", alpha=0.6)
+    plt.colorbar()
+    plt.title(title)
+    plt.axis("off")
+    plt.savefig(f"{title.replace(' ', '_')}.png")
+    plt.show()
+    plt.close()
+
+
+def get_entity_center_seed(gt_mask):
+    """
+    gt_mask: [H, W]
+    return: int (patch index)
+    """
+    ys, xs = torch.where(gt_mask > 0)
+    y_center = ys.float().mean().round().long()
+    x_center = xs.float().mean().round().long()
+    return y_center.item() * gt_mask.shape[1] + x_center.item()
+
+def get_background_seed(mask_entity1, mask_entity2):
+    """
+    mask_entity1, mask_entity2: [H, W]
+    return: int (patch index)
+    """
+    bg_mask = 1 - torch.clamp(mask_entity1 + mask_entity2, 0, 1)
+    ys, xs = torch.where(bg_mask > 0)
+
+    if len(xs) == 0:
+        return None  # 极端情况
+
+    # choose random background pixel
+    idx = np.random.randint(len(xs))
+    y_bg = ys[idx].item()
+    x_bg = xs[idx].item()
+    return y_bg * bg_mask.shape[1] + x_bg
+
+
+def get_patch_self_attention_map(attn, seed_idx, grid_size):
+    """
+    attn: [N, N] vision self-attention
+    """
+    vec = attn[seed_idx]          # seed → all
+    vec = vec / (vec.sum() + 1e-6)
+    return vec.reshape(grid_size, grid_size)
+
+def compute_entity_metrics(attn_map, gt_mask, grid_size, other_gt_mask=None):
+    return {
+        "com": compute_center_of_mass_distance(attn_map, gt_mask, grid_size),
+        "iou": compute_iou(attn_map, gt_mask, grid_size),
+        "soft_iou": compute_soft_iou(attn_map, gt_mask),
+        "wasserstein_x": compute_x_wasserstein(attn_map, gt_mask),
+        "entity_bg_ratio": compute_entity_background_ratio(attn_map, gt_mask, other_gt_mask),
+        "disperson": compute_disperson(attn_map),
+    }
+
 
 
 # =====================
@@ -136,14 +201,14 @@ def extract_prompt_level_cross_attention(image_path, prompt_text):
     # ---- average attention over layers & heads ----
     # outputs.attentions: list[num_layers] of [1, num_heads, seq, seq]
     # global mean
-    # attns = torch.stack(
-    #     [layer.squeeze(0).mean(0) for layer in outputs.attentions]
-    # ).mean(0)   # [seq, seq]
+    attns = torch.stack(
+        [layer.squeeze(0).mean(0) for layer in outputs.attentions]
+    ).mean(0)   # [seq, seq]
 
     # or mid-layer mean
-    attns_by_layer = [layer.squeeze(0).mean(0) for layer in outputs.attentions]
-    mid_layers = attns_by_layer[len(attns_by_layer)//3: 2*len(attns_by_layer)//3]
-    attns = torch.stack(mid_layers).mean(0) # [600,600], 600=24+576
+    # attns_by_layer = [layer.squeeze(0).mean(0) for layer in outputs.attentions]
+    # mid_layers = attns_by_layer[len(attns_by_layer)//3: 2*len(attns_by_layer)//3]
+    # attns = torch.stack(mid_layers).mean(0) # [600,600], 600=24+576
 
     # ---- locate vision tokens ----
     num_patches = model.get_vision_tower().num_patches
@@ -156,8 +221,16 @@ def extract_prompt_level_cross_attention(image_path, prompt_text):
 
     row_sum = cross_attn.sum(dim=1, keepdim=True)
     cross_attn = cross_attn / (row_sum + 1e-6)
-    return cross_attn.cpu(), input_tokens, image
 
+    # ===========================================================
+    # vision encoder attention extraction (for analysis)
+    vis_attn_matrix = aggregate_vit_attention(
+        model.get_vision_tower().image_attentions,
+        select_layer=model.get_vision_tower().select_layer,
+        all_prev_layers=True
+    )
+    print("Vision encoder attention matrix shape:", vis_attn_matrix.shape)  # [N, N]
+    return cross_attn.cpu(), input_tokens, image, vis_attn_matrix.cpu()
 
 # =====================
 # Token selection helpers
@@ -309,6 +382,37 @@ def compute_x_wasserstein_from_distributions(p, q):
     cdf_q = torch.cumsum(q, dim=0)
 
     return torch.sum(torch.abs(cdf_p - cdf_q)).item()
+
+def compute_disperson(attn_map):
+    H, W = attn_map.shape
+    ys = torch.arange(H).view(-1, 1)
+    xs = torch.arange(W).view(1, -1)
+    attn = attn_map / (attn_map.sum() + 1e-6)
+    y_mean = (attn * ys).sum()
+    x_mean = (attn * xs).sum()
+    var = ((ys - y_mean)**2 + (xs - x_mean)**2) * attn
+    dispersion = var.sum().item()
+    return dispersion
+
+def compute_in_out_ratio(attn_map, gt_mask):
+    inside = (attn_map * gt_mask).sum()
+    outside = (attn_map * (1 - gt_mask)).sum()
+    return (inside / (outside + 1e-6)).item()
+
+def compute_entity_background_ratio(attn_map, mask_entity, mask_entity_other):
+    """
+    attn_map: [H, W]
+    mask_entity: 当前 entity 的 mask
+    mask_entity_other: 另一个 entity 的 mask
+    """
+    bg_mask = 1 - torch.clamp(mask_entity + mask_entity_other, 0, 1)
+
+    inside = (attn_map * mask_entity).sum()
+    background = (attn_map * bg_mask).sum()
+
+    return (inside / (background + 1e-6)).item()
+
+
 import json
 BASE = "/home/maqima/VLM-Visualizer/data/spatial_twoshapes/agreement/relational/test/shard0"
 json_path = f"{BASE}/world_model.json"
@@ -322,6 +426,11 @@ entity2_soft_ious = []
 entity1_wassersteins = []
 entity2_wassersteins = []
 relation_x_wassersteins = []
+
+
+entity1_self_attn_metrics_all = {k: [] for k in ["com", "iou", "soft_iou", "wasserstein_x", "entity_bg_ratio", "disperson"]}
+entity2_self_attn_metrics_all = {k: [] for k in ["com", "iou", "soft_iou", "wasserstein_x", "entity_bg_ratio", "disperson"]}
+bg_dispersons = []
 
 for sample_idx in [1,3,4,9,10,11,25,26,29,49,50,52,91,99]:
     image_path = f"{BASE}/world-{sample_idx}.png"
@@ -365,7 +474,7 @@ for sample_idx in [1,3,4,9,10,11,25,26,29,49,50,52,91,99]:
     entity2_name = entity2["shape"]["name"]
     mask_entity1 = gt_bbox_to_patch_mask(entity1, grid_size=24)
     mask_entity2 = gt_bbox_to_patch_mask(entity2, grid_size=24)
-    cross_attn, input_tokens, image = extract_prompt_level_cross_attention(
+    cross_attn, input_tokens, image, attn_patch = extract_prompt_level_cross_attention(
         image_path, prompt
     )
     # replace nan in cross_attn as 0
@@ -510,6 +619,57 @@ for sample_idx in [1,3,4,9,10,11,25,26,29,49,50,52,91,99]:
     with open(f"{save_dir}/metrics_sample_{sample_idx}.txt", "a") as f:
         f.write(f"Right token x-axis Wasserstein: {relation_x_wasserstein:.4f}\n")
 
+    # vision tower self-attention analysis
+
+    # ---- entity seeds ----
+    seed1 = get_entity_center_seed(mask_entity1)
+    seed2 = get_entity_center_seed(mask_entity2)
+    bg_seed = get_background_seed(mask_entity1, mask_entity2)
+
+    # ---- self-attention maps ----
+    entity1_self_map = get_patch_self_attention_map(attn_patch, seed1, 24)
+    entity2_self_map = get_patch_self_attention_map(attn_patch, seed2, 24)
+    print(f"[Sample {sample_idx}] Self-Attention Metrics")
+    if bg_seed is not None:
+        bg_self_map = get_patch_self_attention_map(attn_patch, bg_seed, 24)
+        bg_disperson = compute_disperson(bg_self_map)
+        print(f"Background disperson: {bg_disperson:.4f}")
+        with open(f"{save_dir}/metrics_sample_{sample_idx}.txt", "a") as f:
+            f.write(f"Background disperson: {bg_disperson:.4f}\n")
+        bg_dispersons.append(bg_disperson)
+
+    # ---- visualization ----
+    visualize_patch_self_attn(
+        image, entity1_self_map,
+        f"{save_dir}/{sample_idx}_entity1_self_attention"
+    )
+    visualize_patch_self_attn(
+        image, entity2_self_map,
+        f"{save_dir}/{sample_idx}_entity2_self_attention"
+    )
+
+    # ---- metrics ----
+    m1 = compute_entity_metrics(entity1_self_map, mask_entity1, 24, other_gt_mask=mask_entity2)
+    m2 = compute_entity_metrics(entity2_self_map, mask_entity2, 24, other_gt_mask=mask_entity1)
+
+    # ---- print ----
+    
+    print(f"Entity1: {m1}")
+    print(f"Entity2: {m2}")
+
+    # ---- save per-sample ----
+    with open(f"{save_dir}/metrics_sample_{sample_idx}.txt", "a") as f:
+        f.write(f"Sample {sample_idx} - Vision Self-Attention\n")
+        for k, v in m1.items():
+            f.write(f"Entity1 {k}: {v:.4f}\n")
+        for k, v in m2.items():
+            f.write(f"Entity2 {k}: {v:.4f}\n")
+
+    # ---- collect ----
+    for k in entity1_self_attn_metrics_all:
+        entity1_self_attn_metrics_all[k].append(m1[k])
+        entity2_self_attn_metrics_all[k].append(m2[k])
+
     # ---- collect for mean analysis ----
     entity1_com_dists.append(entity1_com_dist)
     entity2_com_dists.append(entity2_com_dist)
@@ -531,3 +691,21 @@ with open(f"{save_dir}/mean_analysis.txt", "w") as f:
     f.write(f"Entity1 - COM distance: {np.mean(entity1_com_dists):.2f}, IoU: {np.mean(entity1_ious):.4f}, Soft IoU: {np.mean(entity1_soft_ious):.4f}, Wasserstein: {np.mean(entity1_wassersteins):.4f}\n")
     f.write(f"Entity2 - COM distance: {np.mean(entity2_com_dists):.2f}, IoU: {np.mean(entity2_ious):.4f}, Soft IoU: {np.mean(entity2_soft_ious):.4f}, Wasserstein: {np.mean(entity2_wassersteins):.4f}\n")
     f.write(f"Relation token x-axis Wasserstein: {np.mean(relation_x_wassersteins):.4f}\n")
+
+
+print("=== Mean Vision Self-Attention Analysis ===")
+
+with open(f"{save_dir}/mean_analysis.txt", "a") as f:
+    f.write("=== Mean Vision Self-Attention Analysis ===\n")
+
+    for k in entity1_self_attn_metrics_all:
+        e1_mean = np.mean(entity1_self_attn_metrics_all[k])
+        e2_mean = np.mean(entity2_self_attn_metrics_all[k])
+
+        print(f"{k}: Entity1={e1_mean:.4f}, Entity2={e2_mean:.4f}")
+
+        f.write(f"{k}: Entity1={e1_mean:.4f}, Entity2={e2_mean:.4f}\n")
+    if len(bg_dispersons) > 0:
+        bg_disperson_mean = np.mean(bg_dispersons)
+        print(f"Background disperson mean: {bg_disperson_mean:.4f}")
+        f.write(f"Background disperson mean: {bg_disperson_mean:.4f}\n")
