@@ -81,6 +81,12 @@ def parse_relation_sentence(sent):
         (entity1, rel, entity2) or None
     """
     sent = sent.strip().lower()
+    if "adjacent to" in sent:
+        pattern = " is adjacent to "
+        left, right = sent.split(pattern)
+        entity1 = left.strip()
+        entity2 = right.replace(".", "").strip()
+        return entity1, "adjacent", entity2
     for rel in COMPLEX_RELATIONS:
         pattern = f" is to the {rel} of "
         if pattern in sent:
@@ -220,7 +226,7 @@ def find_relation_token(input_tokens, relation):
 # Analysis functions
 # =====================
 
-def analyze_attention_for_caption(image_path, caption, world_data, sample_idx, grid_size=24):
+def analyze_attention_for_caption(image_path, caption, world_data, sample_idx, model, image_processor, tokenizer, device, grid_size=24):
     """
     Extract and analyze attention maps for a given caption.
     
@@ -237,7 +243,7 @@ def analyze_attention_for_caption(image_path, caption, world_data, sample_idx, g
     # Extract cross-attention and vision self-attention
     # This is during forward pass (not generation stage)
     cross_attn, input_tokens, image, vis_attn_matrix = extract_prompt_level_cross_attention(
-        image_path, caption
+        image_path, caption, model, image_processor, tokenizer, device
     )
     
     # Replace NaN values
@@ -252,10 +258,11 @@ def analyze_attention_for_caption(image_path, caption, world_data, sample_idx, g
     # Parse caption to find entities and relation
     parsed = parse_relation_sentence(caption.lower())
     if parsed is None:
+        print(f"Error: Could not parse caption for sample {sample_idx}")
         return None
     
     entity1_text, relation, entity2_text = parsed
-    
+
     # Find token positions
     # Note: Tokenization can split words, so we need to handle multiple tokens
     entity1_pos = find_entity_tokens(input_tokens, entity1_text, entity1)
@@ -411,27 +418,27 @@ def batch_analyze(data_dir, max_samples=None):
         
         world_data = world_data_dict[sample_idx]
         
-        try:
-            # Analyze with original caption
-            result_orig = analyze_attention_for_caption(
-                img_path, original_caption, world_data, sample_idx
-            )
-            if result_orig:
-                result_orig["caption_type"] = "complex"
-                results_original.append(result_orig)
-            
-            # Analyze with modified caption
-            result_mod = analyze_attention_for_caption(
-                img_path, modified_caption, world_data, sample_idx
-            )
-            if result_mod:
-                result_mod["caption_type"] = "adjacent"
-                result_mod["original_caption"] = original_caption
-                results_modified.append(result_mod)
         
-        except Exception as e:
-            print(f"Error processing sample {sample_idx}: {e}")
-            continue
+        # Analyze with original caption
+        result_orig = analyze_attention_for_caption(
+            img_path, original_caption, world_data, sample_idx, model, image_processor, tokenizer, device
+        )
+        if result_orig:
+            result_orig["caption_type"] = "complex"
+            results_original.append(result_orig)
+        
+        # Analyze with modified caption
+        result_mod = analyze_attention_for_caption(
+            img_path, modified_caption, world_data, sample_idx, model, image_processor, tokenizer, device
+        )
+        if result_mod:
+            result_mod["caption_type"] = "adjacent"
+            result_mod["original_caption"] = original_caption
+            results_modified.append(result_mod)
+        
+        # except Exception as e:
+        #     print(f"Error processing sample {sample_idx}: {e}")
+        #     continue
     
     # Combine results
     all_results = results_original + results_modified
@@ -515,20 +522,20 @@ def visualize_comparison(df, output_dir="results"):
         ("entity1_token_dispersion", "Entity1 Token Dispersion"),
         ("entity2_token_entropy", "Entity2 Token Entropy"),
         ("entity2_token_dispersion", "Entity2 Token Dispersion"),
-        ("entity1_self_attn_entropy", "Entity1 Self-Attention Entropy"),
-        ("entity1_self_attn_dispersion", "Entity1 Self-Attention Dispersion"),
-        ("entity2_self_attn_entropy", "Entity2 Self-Attention Entropy"),
-        ("entity2_self_attn_dispersion", "Entity2 Self-Attention Dispersion"),
+        # ("entity1_self_attn_entropy", "Entity1 Self-Attention Entropy"),
+        # ("entity1_self_attn_dispersion", "Entity1 Self-Attention Dispersion"),
+        # ("entity2_self_attn_entropy", "Entity2 Self-Attention Entropy"),
+        # ("entity2_self_attn_dispersion", "Entity2 Self-Attention Dispersion"),
     ]
     
     # Filter available metrics
     available_metrics = [(m, label) for m, label in metrics if m in df.columns]
     
     # 1. Bar plots comparing means
-    fig, axes = plt.subplots(2, 5, figsize=(20, 8))
+    fig, axes = plt.subplots(2, 3, figsize=(20, 8))
     axes = axes.flatten()
     
-    for idx, (metric, label) in enumerate(available_metrics[:10]):
+    for idx, (metric, label) in enumerate(available_metrics[:6]):
         ax = axes[idx]
         complex_vals = df[df["caption_type"] == "complex"][metric].dropna()
         adjacent_vals = df[df["caption_type"] == "adjacent"][metric].dropna()
@@ -549,10 +556,10 @@ def visualize_comparison(df, output_dir="results"):
     plt.close()
     
     # 2. Box plots
-    fig, axes = plt.subplots(2, 5, figsize=(20, 8))
+    fig, axes = plt.subplots(2, 3, figsize=(20, 8))
     axes = axes.flatten()
     
-    for idx, (metric, label) in enumerate(available_metrics[:10]):
+    for idx, (metric, label) in enumerate(available_metrics[:6]):
         ax = axes[idx]
         complex_vals = df[df["caption_type"] == "complex"][metric].dropna()
         adjacent_vals = df[df["caption_type"] == "adjacent"][metric].dropna()
@@ -570,15 +577,15 @@ def visualize_comparison(df, output_dir="results"):
     plt.close()
     
     # 3. Scatter plots: entropy vs dispersion
-    fig, axes = plt.subplots(2, 3, figsize=(18, 12))
+    fig, axes = plt.subplots(1, 3, figsize=(18, 12))
     axes = axes.flatten()
     
     scatter_configs = [
         ("relation_token_entropy", "relation_token_dispersion", "Relation Token"),
         ("entity1_token_entropy", "entity1_token_dispersion", "Entity1 Token"),
         ("entity2_token_entropy", "entity2_token_dispersion", "Entity2 Token"),
-        ("entity1_self_attn_entropy", "entity1_self_attn_dispersion", "Entity1 Self-Attn"),
-        ("entity2_self_attn_entropy", "entity2_self_attn_dispersion", "Entity2 Self-Attn"),
+        # ("entity1_self_attn_entropy", "entity1_self_attn_dispersion", "Entity1 Self-Attn"),
+        # ("entity2_self_attn_entropy", "entity2_self_attn_dispersion", "Entity2 Self-Attn"),
     ]
     
     for idx, (entropy_col, dispersion_col, title) in enumerate(scatter_configs):
@@ -589,7 +596,6 @@ def visualize_comparison(df, output_dir="results"):
         
         complex_df_sub = df[df["caption_type"] == "complex"]
         adjacent_df_sub = df[df["caption_type"] == "adjacent"]
-        
         ax.scatter(
             complex_df_sub[entropy_col],
             complex_df_sub[dispersion_col],
