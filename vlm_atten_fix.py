@@ -394,6 +394,26 @@ def compute_disperson(attn_map):
     dispersion = var.sum().item()
     return dispersion
 
+def compute_entropy(attn_map):
+    """
+    Compute Shannon entropy of an attention map.
+    
+    Args:
+        attn_map: [H, W] attention map (can be cross-attention or self-attention)
+    
+    Returns:
+        entropy: Shannon entropy = -Σ(p * log(p)), where p is normalized attention distribution
+    """
+    # Normalize to probability distribution
+    attn_flat = attn_map.flatten()
+    attn_normalized = attn_flat / (attn_flat.sum() + 1e-6)
+    
+    # Compute entropy: -Σ(p * log(p))
+    # Add small epsilon to avoid log(0)
+    entropy = -(attn_normalized * torch.log(attn_normalized + 1e-10)).sum().item()
+    
+    return entropy
+
 def compute_in_out_ratio(attn_map, gt_mask):
     inside = (attn_map * gt_mask).sum()
     outside = (attn_map * (1 - gt_mask)).sum()
