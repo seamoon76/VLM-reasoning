@@ -5,7 +5,7 @@ import torch
 import numpy as np
 import matplotlib.pyplot as plt
 import cv2
-
+from PIL import Image
 sys.path.append("./models")
 
 from llava.constants import (
@@ -116,7 +116,7 @@ def compute_entity_metrics(attn_map, gt_mask, grid_size, other_gt_mask=None):
 # Core: prompt-level cross attention
 # =====================
 
-def extract_prompt_level_cross_attention(image_path, prompt_text, model, image_processor, tokenizer, device):
+def extract_prompt_level_cross_attention(image_path, prompt_text, model, image_processor, tokenizer, device, shuffle_image=False):
     """
     Return:
         cross_attn: [num_patches, num_prompt_tokens]
@@ -125,6 +125,10 @@ def extract_prompt_level_cross_attention(image_path, prompt_text, model, image_p
 
     # ---- image ----
     image = load_image(image_path)
+
+    if shuffle_image:
+        image = shuffle_image_patches(image)
+        image = Image.fromarray(image)
     image_tensor, _ = process_images([image], image_processor, model.config)
     image_tensor = image_tensor.to(device, dtype=torch.float16)
 
@@ -412,6 +416,45 @@ def compute_entity_background_ratio(attn_map, mask_entity, mask_entity_other):
 
     return (inside / (background + 1e-6)).item()
 
+def find_word_token_positions(tokenizer, input_tokens, word):
+    """
+    Map a word (e.g. pentagon) to its sub-token indices in input_tokens.
+    """
+    word_tokens = tokenizer.tokenize(word)
+    positions = []
+    L = len(word_tokens)
+    for i in range(len(input_tokens) - L + 1):
+        if input_tokens[i:i+L] == word_tokens:
+            positions.extend(range(i, i+L))
+    return positions
+
+def shuffle_image_patches(image, grid_size=24):
+    """
+    Shuffle image patches but keep patch content intact.
+    """
+    img = np.array(image)
+    H, W, C = img.shape
+    patch_h = H // grid_size
+    patch_w = W // grid_size
+
+    patches = []
+    for y in range(grid_size):
+        for x in range(grid_size):
+            patches.append(
+                img[y*patch_h:(y+1)*patch_h, x*patch_w:(x+1)*patch_w]
+            )
+
+    perm = np.random.permutation(len(patches))
+    shuffled = [patches[i] for i in perm]
+
+    new_img = np.zeros_like(img)
+    idx = 0
+    for y in range(grid_size):
+        for x in range(grid_size):
+            new_img[y*patch_h:(y+1)*patch_h, x*patch_w:(x+1)*patch_w] = shuffled[idx]
+            idx += 1
+
+    return new_img
 
 import json
 if __name__ == "__main__":
@@ -435,9 +478,6 @@ if __name__ == "__main__":
     )
 
     model.eval()
-
-    BASE = "/home/maqima/VLM-Visualizer/data/spatial_twoshapes/agreement/relational/test/shard0"
-    json_path = f"{BASE}/world_model.json"
     # save metrics for mean analysis
     entity1_com_dists = []
     entity2_com_dists = []
@@ -448,272 +488,259 @@ if __name__ == "__main__":
     entity1_wassersteins = []
     entity2_wassersteins = []
     relation_x_wassersteins = []
+    # shuffled control
+    entity1_com_dists_shuffle = []
+    entity2_com_dists_shuffle = []
+    entity1_ious_shuffle = []
+    entity2_ious_shuffle = []
+    entity1_soft_ious_shuffle = []
+    entity2_soft_ious_shuffle = []
+    entity1_wassersteins_shuffle = []
+    entity2_wassersteins_shuffle = []
+    relation_x_wassersteins_shuffle = []
 
 
     entity1_self_attn_metrics_all = {k: [] for k in ["com", "iou", "soft_iou", "wasserstein_x", "entity_bg_ratio", "disperson"]}
     entity2_self_attn_metrics_all = {k: [] for k in ["com", "iou", "soft_iou", "wasserstein_x", "entity_bg_ratio", "disperson"]}
+    entity1_self_attn_metrics_all_shuffle = {k: [] for k in ["com", "iou", "soft_iou", "wasserstein_x", "entity_bg_ratio", "disperson"]}
+    entity2_self_attn_metrics_all_shuffle = {k: [] for k in ["com", "iou", "soft_iou", "wasserstein_x", "entity_bg_ratio", "disperson"]}
     bg_dispersons = []
-
-    for sample_idx in [1,3,4,9,10,11,25,26,29,49,50,52,91,99]:
-        image_path = f"{BASE}/world-{sample_idx}.png"
-        if sample_idx == 1:
-            prompt = "a pentagon is to the right of an ellipse ."
-        elif sample_idx == 3:
-            prompt = "a red triangle is to the left of a blue semicircle ."
-        elif sample_idx == 4:
-            prompt = "a triangle is to the right of an ellipse ."
-        # elif sample_idx == 5:
-        #     prompt = "a yellow rectangle is above a circle ."
-        elif sample_idx == 9:
-            prompt = "a cross is to the right of a semicircle ."
-        elif sample_idx == 10:
-            prompt = "a cross is to the right of a rectangle ."
-        elif sample_idx == 11:
-            prompt = "a blue circle is to the right of a semicircle ."
-        elif sample_idx == 25:
-            prompt = "a blue semicircle is to the right of a yellow cross ."
-        elif sample_idx == 26:
-            prompt = "a gray cross is to the right of a green semicircle ."
-        elif sample_idx == 29:
-            prompt = "a blue ellipse is to the right of a yellow square ."
-        elif sample_idx == 49:
-            prompt = "a magenta pentagon is to the left of a magenta circle ."
-        elif sample_idx == 50:
-            prompt = "a pentagon is to the right of a magenta circle ."
-        elif sample_idx == 52:
-            prompt = "a green cross is to the left of a magenta circle ."
-        elif sample_idx == 91:
-            prompt = "a yellow square is to the right of a blue ellipse ."
-        elif sample_idx == 99:
-            prompt = "a magenta square is to the left of a magenta circle ."
-        else:
-            raise ValueError("Only sample_idx 1,3,4 are supported in this script.")
+    bg_dispersons_shuffle = []
+    save_dir = "left_right_analysis_outputs"
+    os.makedirs(save_dir, exist_ok=True)
+    for shard_id in range(1):
+        BASE = f"/home/maqima/VLM-Visualizer/data/spatial_twoshapes/agreement/relational/test/shard{shard_id}"
+        agreement_path = f"{BASE}/agreement.txt"
+        caption_path = f"{BASE}/caption.txt"
+        agreement = [float(x.strip()) for x in open(agreement_path).readlines()]
+        captions = [x.strip() for x in open(caption_path).readlines()]
+        filtered_ids = [i for i, a in enumerate(agreement) if a == 1.0]
+        json_path = f"{BASE}/world_model.json"
         
-        world = json.load(open(json_path))
-        entity1 = world[sample_idx]["entities"][0]
-        entity1_name = entity1["shape"]["name"]
-        entity2 = world[sample_idx]["entities"][1]
-        entity2_name = entity2["shape"]["name"]
-        mask_entity1 = gt_bbox_to_patch_mask(entity1, grid_size=24)
-        mask_entity2 = gt_bbox_to_patch_mask(entity2, grid_size=24)
-        cross_attn, input_tokens, image, attn_patch = extract_prompt_level_cross_attention(
-            image_path, prompt, model, image_processor, tokenizer, device
-        )
-        # replace nan in cross_attn as 0
-        cross_attn = torch.nan_to_num(cross_attn, nan=0.0)
-        print("number of input tokens:", len(input_tokens))
-        print("Cross-attention shape:", cross_attn.shape)  # [num_patches, num_prompt_tokens]
-        grid_size = 24
-        relation = "right" if "right" in prompt else "left"
-        # ---- entity / relation token indices ----
-        if sample_idx == 1:
-            # pentagon, right, ellipse
-            entity1_pos = find_token_positions(input_tokens, ["▁pent", "agon"])
-            relation_pos = find_token_positions(input_tokens, ["▁right"])
-            entity2_pos = find_token_positions(input_tokens, ["▁el", "lipse"])
-        elif sample_idx == 3:
-            # triangle, left, semicircle
-            entity1_pos = find_token_positions(input_tokens, ["▁triangle"])
-            relation_pos = find_token_positions(input_tokens, ["▁left"])
-            entity2_pos = find_token_positions(input_tokens, ["▁sem", "ic", "irc", "le"])
-        elif sample_idx == 4:
-            # triangle, right, ellipse
-            entity1_pos = find_token_positions(input_tokens, ["▁triangle"])
-            relation_pos = find_token_positions(input_tokens, ["▁right"])
-            entity2_pos = find_token_positions(input_tokens, ["▁el", "lipse"])
-        # elif sample_idx == 5:
-        #     # rectangle, above, circle
-        #     entity1_pos = find_token_positions(input_tokens, ["▁yellow", "▁rectangle"])
-        #     relation_pos = find_token_positions(input_tokens, ["▁above"])
-        #     entity2_pos = find_token_positions(input_tokens, ["▁circle"])
-        elif sample_idx == 9:
-            # cross, right, semicircle
-            entity1_pos = find_token_positions(input_tokens, ["▁cross"])
-            relation_pos = find_token_positions(input_tokens, ["▁right"])
-            entity2_pos = find_token_positions(input_tokens, ["▁sem", "ic", "irc", "le"])
-        elif sample_idx == 10:
-            # cross, right, rectangle
-            entity1_pos = find_token_positions(input_tokens, ["▁cross"])
-            relation_pos = find_token_positions(input_tokens, ["▁right"])
-            entity2_pos = find_token_positions(input_tokens, ["▁rectangle"])
-        elif sample_idx == 11:
-            # circle, right, semicircle
-            entity1_pos = find_token_positions(input_tokens, ["▁blue", "▁circle"])
-            relation_pos = find_token_positions(input_tokens, ["▁right"])
-            entity2_pos = find_token_positions(input_tokens, ["▁sem", "ic", "irc", "le"])
-        elif sample_idx == 25:
-            # semicircle, right, cross
-            entity1_pos = find_token_positions(input_tokens, ["▁blue", "▁sem", "ic", "irc", "le"])
-            relation_pos = find_token_positions(input_tokens, ["▁right"])
-            entity2_pos = find_token_positions(input_tokens, ["▁yellow", "▁cross"])
-        elif sample_idx == 26:
-            # cross, right, semicircle
-            entity1_pos = find_token_positions(input_tokens, ["▁gray", "▁cross"])
-            relation_pos = find_token_positions(input_tokens, ["▁right"])
-            entity2_pos = find_token_positions(input_tokens, ["▁green", "▁sem", "ic", "irc", "le"])
-        elif sample_idx == 29:
-            # ellipse, right, square
-            entity1_pos = find_token_positions(input_tokens, ["▁blue", "▁el", "lipse"])
-            relation_pos = find_token_positions(input_tokens, ["▁right"])
-            entity2_pos = find_token_positions(input_tokens, ["▁yellow", "▁square"])
-        elif sample_idx == 49:
-            # pentagon, left, circle
-            entity1_pos = find_token_positions(input_tokens, ["▁magenta", "▁pent", "agon"])
-            relation_pos = find_token_positions(input_tokens, ["▁left"])
-            entity2_pos = find_token_positions(input_tokens, ["▁magenta", "▁circle"])
-        elif sample_idx == 50:
-            # pentagon, right, circle
-            entity1_pos = find_token_positions(input_tokens, ["▁pent", "agon"])
-            relation_pos = find_token_positions(input_tokens, ["▁right"])
-            entity2_pos = find_token_positions(input_tokens, ["▁magenta", "▁circle"])
-        elif sample_idx == 52:
-            # cross, left, circle
-            entity1_pos = find_token_positions(input_tokens, ["▁green", "▁cross"])
-            relation_pos = find_token_positions(input_tokens, ["▁left"])
-            entity2_pos = find_token_positions(input_tokens, ["▁magenta", "▁circle"])
-        elif sample_idx == 91:
-            # square, right, ellipse
-            entity1_pos = find_token_positions(input_tokens, ["▁yellow", "▁square"])
-            relation_pos = find_token_positions(input_tokens, ["▁right"])
-            entity2_pos = find_token_positions(input_tokens, ["▁blue", "▁el", "lipse"])
-        elif sample_idx == 99:
-            # square, left, circle
-            entity1_pos = find_token_positions(input_tokens, ["▁magenta", "▁square"])
-            relation_pos = find_token_positions(input_tokens, ["▁left"])
-            entity2_pos = find_token_positions(input_tokens, ["▁magenta", "▁circle"])
 
-        else:
-            raise ValueError("Only sample_idx 1,3,4 are supported in this script.")
-        print(f"{entity1_name} tokens:", entity1_pos)
-        print(f"{relation} tokens:", relation_pos)
-        print(f"{entity2_name} tokens:", entity2_pos)
+        for sample_idx in filtered_ids:
+            image_path = f"{BASE}/world-{sample_idx}.png"
+            prompt = captions[sample_idx]
+            # make sure "right" or "left" in prompt
+            if "right" not in prompt and "left" not in prompt:
+                continue
+            if "shape" in prompt:
+                continue
+            
+            world = json.load(open(json_path))
+            entity1 = world[sample_idx]["entities"][0]
+            entity1_name = entity1["shape"]["name"]
+            entity2 = world[sample_idx]["entities"][1]
+            entity2_name = entity2["shape"]["name"]
+            mask_entity1 = gt_bbox_to_patch_mask(entity1, grid_size=24)
+            mask_entity2 = gt_bbox_to_patch_mask(entity2, grid_size=24)
+            cross_attn, input_tokens, image, attn_patch = \
+            extract_prompt_level_cross_attention(
+                image_path, prompt, model, image_processor, tokenizer, device
+            )
 
-        # ---- pooled attentions ----
-        entity1_attn = pool_attention(cross_attn, entity1_pos)
-        entity2_attn = pool_attention(cross_attn, entity2_pos)
-        relation_attn = pool_attention(cross_attn, relation_pos)
+            cross_attn_shuffle, _, _, attn_patch_shuffle = \
+                extract_prompt_level_cross_attention(
+                    image_path, prompt, model, image_processor, tokenizer, device,
+                    shuffle_image=True
+                )
 
+            # replace nan in cross_attn as 0
+            cross_attn = torch.nan_to_num(cross_attn, nan=0.0)
+            print("number of input tokens:", len(input_tokens))
+            print("Cross-attention shape:", cross_attn.shape)  # [num_patches, num_prompt_tokens]
+            grid_size = 24
+            relation = "right" if "right" in prompt else "left"
+            # ---- entity / relation token indices ----
+            e1_pos = find_word_token_positions(tokenizer, input_tokens, entity1_name)
+            e2_pos = find_word_token_positions(tokenizer, input_tokens, entity2_name)
+            rel_pos = find_word_token_positions(tokenizer, input_tokens, relation)
+            print(f"{entity1_name} tokens:", e1_pos)
+            print(f"{relation} tokens:", rel_pos)
+            print(f"{entity2_name} tokens:", e2_pos)
 
-        # ---- reshape ----
-        entity1_map = entity1_attn.reshape(grid_size, grid_size)
-        entity2_map = entity2_attn.reshape(grid_size, grid_size)
-        relation_map = relation_attn.reshape(grid_size, grid_size)
+            # ---- pooled attentions ----
+            entity1_attn = pool_attention(cross_attn, e1_pos)
+            entity2_attn = pool_attention(cross_attn, e2_pos)
+            relation_attn = pool_attention(cross_attn, rel_pos)
+            # ---- shuffled control ----
+            entity1_attn_shuffle = pool_attention(cross_attn_shuffle, e1_pos)
+            entity2_attn_shuffle = pool_attention(cross_attn_shuffle, e2_pos)
+            relation_attn_shuffle = pool_attention(cross_attn_shuffle, rel_pos)
+            
 
-        save_dir = "left_right_analysis_outputs"
-        os.makedirs(save_dir, exist_ok=True)
-        # ---- visualize ----
-        visualize(image, entity1_map, f"{save_dir}/{sample_idx} {entity1_name} attention")
-        visualize(image, relation_map, f"{save_dir}/{sample_idx} {relation} attention")
-        visualize(image, entity2_map, f"{save_dir}/{sample_idx} {entity2_name} attention")
-        # ---- compute metrics ----
-        entity2_com_dist = compute_center_of_mass_distance(entity2_map, mask_entity2, grid_size)
-        entity2_iou = compute_iou(entity2_map, mask_entity2, grid_size)
-        entity1_com_dist = compute_center_of_mass_distance(entity1_map, mask_entity1, grid_size)
-        entity1_iou = compute_iou(entity1_map, mask_entity1, grid_size)
-        entity2_soft_iou = compute_soft_iou(entity2_map, mask_entity2)
-        entity1_soft_iou = compute_soft_iou(entity1_map, mask_entity1)
-        entity2_wasserstein = compute_x_wasserstein(entity2_map, mask_entity2)
-        entity1_wasserstein = compute_x_wasserstein(entity1_map, mask_entity1)
-        print("sample idx:", sample_idx)
-        print(f"Entity1 - COM distance: {entity1_com_dist:.2f}, IoU: {entity1_iou:.4f}, Soft IoU: {entity1_soft_iou:.4f}, Wasserstein: {entity1_wasserstein:.4f}")
-        print(f"Entity2 - COM distance: {entity2_com_dist:.2f}, IoU: {entity2_iou:.4f}, Soft IoU: {entity2_soft_iou:.4f}, Wasserstein: {entity2_wasserstein:.4f}")
-        # write into a txt file
-        with open(f"{save_dir}/metrics_sample_{sample_idx}.txt", "w") as f:
-            f.write(f"sample idx: {sample_idx}\n")
-            f.write(f"Entity1 - COM distance: {entity1_com_dist:.2f}, IoU: {entity1_iou:.4f}, Soft IoU: {entity1_soft_iou:.4f}, Wasserstein: {entity1_wasserstein:.4f}\n")
-            f.write(f"Entity2 - COM distance: {entity2_com_dist:.2f}, IoU: {entity2_iou:.4f}, Soft IoU: {entity2_soft_iou:.4f}, Wasserstein: {entity2_wasserstein:.4f}\n")
-        if sample_idx == 5:
-            continue    # skip relation analysis for "above" case
-        # 1. build GT relation distribution on x-axis
-        gt_relation_x = build_relation_gt_x(
-            mask_entity1, mask_entity2, relation
-        )
+            # ---- reshape ----
+            entity1_map = entity1_attn.reshape(grid_size, grid_size)
+            entity2_map = entity2_attn.reshape(grid_size, grid_size)
+            relation_map = relation_attn.reshape(grid_size, grid_size)
+            entity1_map_shuffle = entity1_attn_shuffle.reshape(grid_size, grid_size)
+            entity2_map_shuffle = entity2_attn_shuffle.reshape(grid_size, grid_size)
+            relation_map_shuffle = relation_attn_shuffle.reshape(grid_size, grid_size)
 
-        # 2. get attention x distribution for "right" token
-        attn_x = get_attn_x_distribution(relation_map)
+            os.makedirs(f"{save_dir}/shard{shard_id}", exist_ok=True)
+            # ---- visualize ----
+            visualize(image, entity1_map, f"{save_dir}/{sample_idx} {entity1_name} attention")
+            visualize(image, relation_map, f"{save_dir}/{sample_idx} {relation} attention")
+            visualize(image, entity2_map, f"{save_dir}/{sample_idx} {entity2_name} attention")
+            # ---- compute metrics ----
+            entity2_com_dist = compute_center_of_mass_distance(entity2_map, mask_entity2, grid_size)
+            entity2_iou = compute_iou(entity2_map, mask_entity2, grid_size)
+            entity1_com_dist = compute_center_of_mass_distance(entity1_map, mask_entity1, grid_size)
+            entity1_iou = compute_iou(entity1_map, mask_entity1, grid_size)
+            entity2_soft_iou = compute_soft_iou(entity2_map, mask_entity2)
+            entity1_soft_iou = compute_soft_iou(entity1_map, mask_entity1)
+            entity2_wasserstein = compute_x_wasserstein(entity2_map, mask_entity2)
+            entity1_wasserstein = compute_x_wasserstein(entity1_map, mask_entity1)
+            # matrics for shuffled control
+            entity1_shuffle_com_dist = compute_center_of_mass_distance(entity1_map_shuffle, mask_entity1, grid_size)
+            entity2_shuffle_com_dist = compute_center_of_mass_distance(entity2_map_shuffle, mask_entity2, grid_size)
+            entity1_shuffle_iou = compute_iou(entity1_map_shuffle, mask_entity1, grid_size)
+            entity2_shuffle_iou = compute_iou(entity2_map_shuffle, mask_entity2, grid_size)
+            entity1_shuffle_soft_iou = compute_soft_iou(entity1_map_shuffle, mask_entity1)
+            entity2_shuffle_soft_iou = compute_soft_iou(entity2_map_shuffle, mask_entity2)
+            entity1_shuffle_wasserstein = compute_x_wasserstein(entity1_map_shuffle, mask_entity1)
+            entity2_shuffle_wasserstein = compute_x_wasserstein(entity2_map_shuffle, mask_entity2)
 
-        # 3. compute Wasserstein distance
-        relation_x_wasserstein = compute_x_wasserstein_from_distributions(
-            attn_x, gt_relation_x
-        )
+            print("sample idx:", sample_idx)
+            print(f"Entity1 - COM distance: {entity1_com_dist:.4f}, IoU: {entity1_iou:.4f}, Soft IoU: {entity1_soft_iou:.4f}, Wasserstein: {entity1_wasserstein:.4f}, Shuffle COM distance: {entity1_shuffle_com_dist:.2f}, Shuffle IoU: {entity1_shuffle_iou:.4f}, Shuffle Soft IoU: {entity1_shuffle_soft_iou:.4f}, Shuffle Wasserstein: {entity1_shuffle_wasserstein:.4f}")
+            print(f"Entity2 - COM distance: {entity2_com_dist:.4f}, IoU: {entity2_iou:.4f}, Soft IoU: {entity2_soft_iou:.4f}, Wasserstein: {entity2_wasserstein:.4f}, Shuffle COM distance: {entity2_shuffle_com_dist:.2f}, Shuffle IoU: {entity2_shuffle_iou:.4f}, Shuffle Soft IoU: {entity2_shuffle_soft_iou:.4f}, Shuffle Wasserstein: {entity2_shuffle_wasserstein:.4f}")
+            # write into a txt file
+            with open(f"{save_dir}/shard{shard_id}/metrics_sample_{sample_idx}.txt", "w") as f:
+                f.write(f"sample idx: {sample_idx}\n")
+                f.write(f"Entity1 - COM distance: {entity1_com_dist:.4f}, IoU: {entity1_iou:.4f}, Soft IoU: {entity1_soft_iou:.4f}, Wasserstein: {entity1_wasserstein:.4f}, Shuffle COM distance: {entity1_shuffle_com_dist:.2f}, Shuffle IoU: {entity1_shuffle_iou:.4f}, Shuffle Soft IoU: {entity1_shuffle_soft_iou:.4f}, Shuffle Wasserstein: {entity1_shuffle_wasserstein:.4f}\n")
+                f.write(f"Entity2 - COM distance: {entity2_com_dist:.4f}, IoU: {entity2_iou:.4f}, Soft IoU: {entity2_soft_iou:.4f}, Wasserstein: {entity2_wasserstein:.4f}, Shuffle COM distance: {entity2_shuffle_com_dist:.2f}, Shuffle IoU: {entity2_shuffle_iou:.4f}, Shuffle Soft IoU: {entity2_shuffle_soft_iou:.4f}, Shuffle Wasserstein: {entity2_shuffle_wasserstein:.4f}\n")
 
-        print(f"Right token x-axis Wasserstein: {relation_x_wasserstein:.4f}")
-        with open(f"{save_dir}/metrics_sample_{sample_idx}.txt", "a") as f:
-            f.write(f"Right token x-axis Wasserstein: {relation_x_wasserstein:.4f}\n")
+            # 1. build GT relation distribution on x-axis
+            gt_relation_x = build_relation_gt_x(
+                mask_entity1, mask_entity2, relation
+            )
 
-        # vision tower self-attention analysis
+            # 2. get attention x distribution for "right" token
+            attn_x = get_attn_x_distribution(relation_map)
 
-        # ---- entity seeds ----
-        seed1 = get_entity_center_seed(mask_entity1)
-        seed2 = get_entity_center_seed(mask_entity2)
-        bg_seed = get_background_seed(mask_entity1, mask_entity2)
+            # 3. compute Wasserstein distance
+            relation_x_wasserstein = compute_x_wasserstein_from_distributions(
+                attn_x, gt_relation_x
+            )
+            relation_x_shuffle_wasserstein = compute_x_wasserstein_from_distributions(
+                get_attn_x_distribution(relation_map_shuffle), gt_relation_x
+            )
 
-        # ---- self-attention maps ----
-        entity1_self_map = get_patch_self_attention_map(attn_patch, seed1, 24)
-        entity2_self_map = get_patch_self_attention_map(attn_patch, seed2, 24)
-        print(f"[Sample {sample_idx}] Self-Attention Metrics")
-        if bg_seed is not None:
-            bg_self_map = get_patch_self_attention_map(attn_patch, bg_seed, 24)
-            bg_disperson = compute_disperson(bg_self_map)
-            print(f"Background disperson: {bg_disperson:.4f}")
-            with open(f"{save_dir}/metrics_sample_{sample_idx}.txt", "a") as f:
-                f.write(f"Background disperson: {bg_disperson:.4f}\n")
-            bg_dispersons.append(bg_disperson)
+            print(f"Right token x-axis Wasserstein: {relation_x_wasserstein:.4f}, Shuffle Wasserstein: {relation_x_shuffle_wasserstein:.4f}")
+            with open(f"{save_dir}/shard{shard_id}/metrics_sample_{sample_idx}.txt", "a") as f:
+                f.write(f"Right token x-axis Wasserstein: {relation_x_wasserstein:.4f}, Shuffle Wasserstein: {relation_x_shuffle_wasserstein:.4f}\n")
 
-        # ---- visualization ----
-        visualize_patch_self_attn(
-            image, entity1_self_map,
-            f"{save_dir}/{sample_idx}_entity1_self_attention"
-        )
-        visualize_patch_self_attn(
-            image, entity2_self_map,
-            f"{save_dir}/{sample_idx}_entity2_self_attention"
-        )
+            # vision tower self-attention analysis
 
-        # ---- metrics ----
-        m1 = compute_entity_metrics(entity1_self_map, mask_entity1, 24, other_gt_mask=mask_entity2)
-        m2 = compute_entity_metrics(entity2_self_map, mask_entity2, 24, other_gt_mask=mask_entity1)
+            # ---- entity seeds ----
+            seed1 = get_entity_center_seed(mask_entity1)
+            seed2 = get_entity_center_seed(mask_entity2)
+            bg_seed = get_background_seed(mask_entity1, mask_entity2)
 
-        # ---- print ----
-        
-        print(f"Entity1: {m1}")
-        print(f"Entity2: {m2}")
+            # ---- self-attention maps ----
+            entity1_self_map = get_patch_self_attention_map(attn_patch, seed1, 24)
+            entity2_self_map = get_patch_self_attention_map(attn_patch, seed2, 24)
+            print(f"[Sample {sample_idx}] Self-Attention Metrics")
+            if bg_seed is not None:
+                bg_self_map = get_patch_self_attention_map(attn_patch, bg_seed, 24)
+                bg_disperson = compute_disperson(bg_self_map)
+                print(f"Background disperson: {bg_disperson:.4f}")
+                with open(f"{save_dir}/shard{shard_id}/metrics_sample_{sample_idx}.txt", "a") as f:
+                    f.write(f"Background disperson: {bg_disperson:.4f}\n")
+                bg_dispersons.append(bg_disperson)
+            
+            # shuffle control
+            entity1_self_map_shuffle = get_patch_self_attention_map(attn_patch_shuffle, seed1, 24)
+            entity2_self_map_shuffle = get_patch_self_attention_map(attn_patch_shuffle, seed2, 24)
+            print(f"[Sample {sample_idx}] Self-Attention Metrics (Shuffled Control)")
+            if bg_seed is not None:
+                bg_self_map_shuffle = get_patch_self_attention_map(attn_patch_shuffle, bg_seed, 24)
+                bg_disperson_shuffle = compute_disperson(bg_self_map_shuffle)
+                print(f"Background disperson (Shuffled): {bg_disperson_shuffle:.4f}")
+                with open(f"{save_dir}/shard{shard_id}/metrics_sample_{sample_idx}.txt", "a") as f:
+                    f.write(f"Background disperson (Shuffled): {bg_disperson_shuffle:.4f}\n")
+                bg_dispersons_shuffle.append(bg_disperson_shuffle)
 
-        # ---- save per-sample ----
-        with open(f"{save_dir}/metrics_sample_{sample_idx}.txt", "a") as f:
-            f.write(f"Sample {sample_idx} - Vision Self-Attention\n")
-            for k, v in m1.items():
-                f.write(f"Entity1 {k}: {v:.4f}\n")
-            for k, v in m2.items():
-                f.write(f"Entity2 {k}: {v:.4f}\n")
+            # ---- visualization ----
+            visualize_patch_self_attn(
+                image, entity1_self_map,
+                f"{save_dir}/shard{shard_id}/{sample_idx}_entity1_self_attention"
+            )
+            visualize_patch_self_attn(
+                image, entity2_self_map,
+                f"{save_dir}/shard{shard_id}/{sample_idx}_entity2_self_attention"
+            )
 
-        # ---- collect ----
-        for k in entity1_self_attn_metrics_all:
-            entity1_self_attn_metrics_all[k].append(m1[k])
-            entity2_self_attn_metrics_all[k].append(m2[k])
+            # ---- metrics ----
+            m1 = compute_entity_metrics(entity1_self_map, mask_entity1, 24, other_gt_mask=mask_entity2)
+            m2 = compute_entity_metrics(entity2_self_map, mask_entity2, 24, other_gt_mask=mask_entity1)
 
-        # ---- collect for mean analysis ----
-        entity1_com_dists.append(entity1_com_dist)
-        entity2_com_dists.append(entity2_com_dist)
-        entity1_ious.append(entity1_iou)
-        entity2_ious.append(entity2_iou)
-        entity1_soft_ious.append(entity1_soft_iou)
-        entity2_soft_ious.append(entity2_soft_iou)
-        entity1_wassersteins.append(entity1_wasserstein)
-        entity2_wassersteins.append(entity2_wasserstein)
-        relation_x_wassersteins.append(relation_x_wasserstein)
+            # shuffle control metrics
+            m1_shuffle = compute_entity_metrics(entity1_self_map_shuffle, mask_entity1,
+                                                24, other_gt_mask=mask_entity2)
+            m2_shuffle = compute_entity_metrics(entity2_self_map_shuffle, mask_entity2,
+                                                24, other_gt_mask=mask_entity1)
+
+            # ---- print ----
+            
+            print(f"Entity1: {m1}")
+            print(f"Entity2: {m2}")
+
+            # ---- save per-sample ----
+            with open(f"{save_dir}/shard{shard_id}/metrics_sample_{sample_idx}.txt", "a") as f:
+                f.write(f"Sample {sample_idx} - Vision Self-Attention\n")
+                for k, v in m1.items():
+                    f.write(f"Entity1 {k}: {v:.4f}\n")
+                for k, v in m2.items():
+                    f.write(f"Entity2 {k}: {v:.4f}\n")
+                for k, v in m1_shuffle.items():
+                    f.write(f"Entity1 (Shuffled) {k}: {v:.4f}\n")
+                for k, v in m2_shuffle.items():
+                    f.write(f"Entity2 (Shuffled) {k}: {v:.4f}\n")
+
+            # ---- collect ----
+            for k in entity1_self_attn_metrics_all:
+                entity1_self_attn_metrics_all[k].append(m1[k])
+                entity2_self_attn_metrics_all[k].append(m2[k])
+                entity1_self_attn_metrics_all_shuffle[k].append(m1_shuffle[k])
+                entity2_self_attn_metrics_all_shuffle[k].append(m2_shuffle[k])
+
+            # ---- collect for mean analysis ----
+            entity1_com_dists.append(entity1_com_dist)
+            entity2_com_dists.append(entity2_com_dist)
+            entity1_ious.append(entity1_iou)
+            entity2_ious.append(entity2_iou)
+            entity1_soft_ious.append(entity1_soft_iou)
+            entity2_soft_ious.append(entity2_soft_iou)
+            entity1_wassersteins.append(entity1_wasserstein)
+            entity2_wassersteins.append(entity2_wasserstein)
+            relation_x_wassersteins.append(relation_x_wasserstein)
+            # shuffled control
+            entity1_com_dists_shuffle.append(entity1_shuffle_com_dist)
+            entity2_com_dists_shuffle.append(entity2_shuffle_com_dist)
+            entity1_ious_shuffle.append(entity1_shuffle_iou)
+            entity2_ious_shuffle.append(entity2_shuffle_iou)
+            entity1_soft_ious_shuffle.append(entity1_shuffle_soft_iou)
+            entity2_soft_ious_shuffle.append(entity2_shuffle_soft_iou)
+            entity1_wassersteins_shuffle.append(entity1_shuffle_wasserstein)
+            entity2_wassersteins_shuffle.append(entity2_shuffle_wasserstein)
+            relation_x_wassersteins_shuffle.append(relation_x_shuffle_wasserstein)
     # ---- mean analysis ----
     num_samples = len(entity1_com_dists)
     print("=== Mean Analysis over all samples ===")
-    print(f"Entity1 - COM distance: {np.mean(entity1_com_dists):.2f}, IoU: {np.mean(entity1_ious):.4f}, Soft IoU: {np.mean(entity1_soft_ious):.4f}, Wasserstein: {np.mean(entity1_wassersteins):.4f}")
-    print(f"Entity2 - COM distance: {np.mean(entity2_com_dists):.2f}, IoU: {np.mean(entity2_ious):.4f}, Soft IoU: {np.mean(entity2_soft_ious):.4f}, Wasserstein: {np.mean(entity2_wassersteins):.4f}")
+    print(f"Entity1 - COM distance: {np.mean(entity1_com_dists):.4f}, IoU: {np.mean(entity1_ious):.4f}, Soft IoU: {np.mean(entity1_soft_ious):.4f}, Wasserstein: {np.mean(entity1_wassersteins):.4f}")
+    print(f"Entity2 - COM distance: {np.mean(entity2_com_dists):.4f}, IoU: {np.mean(entity2_ious):.4f}, Soft IoU: {np.mean(entity2_soft_ious):.4f}, Wasserstein: {np.mean(entity2_wassersteins):.4f}")
+    print(f"Entity1 (Shuffled) - COM distance: {np.mean(entity1_com_dists_shuffle):.4f}, IoU: {np.mean(entity1_ious_shuffle):.4f}, Soft IoU: {np.mean(entity1_soft_ious_shuffle):.4f}, Wasserstein: {np.mean(entity1_wassersteins_shuffle):.4f}")
+    print(f"Entity2 (Shuffled) - COM distance: {np.mean(entity2_com_dists_shuffle):.4f}, IoU: {np.mean(entity2_ious_shuffle):.4f}, Soft IoU: {np.mean(entity2_soft_ious_shuffle):.4f}, Wasserstein: {np.mean(entity2_wassersteins_shuffle):.4f}")
     print(f"Relation token x-axis Wasserstein: {np.mean(relation_x_wassersteins):.4f}")
     with open(f"{save_dir}/mean_analysis.txt", "w") as f:
         f.write("=== Mean Analysis over all samples ===\n")
-        f.write(f"Entity1 - COM distance: {np.mean(entity1_com_dists):.2f}, IoU: {np.mean(entity1_ious):.4f}, Soft IoU: {np.mean(entity1_soft_ious):.4f}, Wasserstein: {np.mean(entity1_wassersteins):.4f}\n")
-        f.write(f"Entity2 - COM distance: {np.mean(entity2_com_dists):.2f}, IoU: {np.mean(entity2_ious):.4f}, Soft IoU: {np.mean(entity2_soft_ious):.4f}, Wasserstein: {np.mean(entity2_wassersteins):.4f}\n")
+        f.write(f"Entity1 - COM distance: {np.mean(entity1_com_dists):.4f}, IoU: {np.mean(entity1_ious):.4f}, Soft IoU: {np.mean(entity1_soft_ious):.4f}, Wasserstein: {np.mean(entity1_wassersteins):.4f}\n")
+        f.write(f"Entity2 - COM distance: {np.mean(entity2_com_dists):.4f}, IoU: {np.mean(entity2_ious):.4f}, Soft IoU: {np.mean(entity2_soft_ious):.4f}, Wasserstein: {np.mean(entity2_wassersteins):.4f}\n")
         f.write(f"Relation token x-axis Wasserstein: {np.mean(relation_x_wassersteins):.4f}\n")
-
+        f.write(f"Entity1 (Shuffled) - COM distance: {np.mean(entity1_com_dists_shuffle):.4f}, IoU: {np.mean(entity1_ious_shuffle):.4f}, Soft IoU: {np.mean(entity1_soft_ious_shuffle):.4f}, Wasserstein: {np.mean(entity1_wassersteins_shuffle):.4f}\n")
+        f.write(f"Entity2 (Shuffled) - COM distance: {np.mean(entity2_com_dists_shuffle):.4f}, IoU: {np.mean(entity2_ious_shuffle):.4f}, Soft IoU: {np.mean(entity2_soft_ious_shuffle):.4f}, Wasserstein: {np.mean(entity2_wassersteins_shuffle):.4f}\n")
+        f.write(f"Relation token x-axis Wasserstein (Shuffled): {np.mean(relation_x_wassersteins_shuffle):.4f}\n")
 
     print("=== Mean Vision Self-Attention Analysis ===")
 
@@ -723,11 +750,18 @@ if __name__ == "__main__":
         for k in entity1_self_attn_metrics_all:
             e1_mean = np.mean(entity1_self_attn_metrics_all[k])
             e2_mean = np.mean(entity2_self_attn_metrics_all[k])
+            e1_shuffle_mean = np.mean(entity1_self_attn_metrics_all_shuffle[k])
+            e2_shuffle_mean = np.mean(entity2_self_attn_metrics_all_shuffle[k])
 
             print(f"{k}: Entity1={e1_mean:.4f}, Entity2={e2_mean:.4f}")
-
+            print(f"{k} (Shuffled): Entity1={e1_shuffle_mean:.4f}, Entity2={e2_shuffle_mean:.4f}")
             f.write(f"{k}: Entity1={e1_mean:.4f}, Entity2={e2_mean:.4f}\n")
+            f.write(f"{k} (Shuffled): Entity1={e1_shuffle_mean:.4f}, Entity2={e2_shuffle_mean:.4f}\n")
         if len(bg_dispersons) > 0:
             bg_disperson_mean = np.mean(bg_dispersons)
             print(f"Background disperson mean: {bg_disperson_mean:.4f}")
             f.write(f"Background disperson mean: {bg_disperson_mean:.4f}\n")
+        if len(bg_dispersons_shuffle) > 0:
+            bg_disperson_shuffle_mean = np.mean(bg_dispersons_shuffle)
+            print(f"Background disperson mean (Shuffled): {bg_disperson_shuffle_mean:.4f}")
+            f.write(f"Background disperson mean (Shuffled): {bg_disperson_shuffle_mean:.4f}\n")
