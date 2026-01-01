@@ -508,7 +508,7 @@ if __name__ == "__main__":
     bg_dispersons_shuffle = []
     save_dir = "left_right_analysis_outputs"
     os.makedirs(save_dir, exist_ok=True)
-    for shard_id in range(1):
+    for shard_id in range(5):
         BASE = f"/home/maqima/VLM-Visualizer/data/spatial_twoshapes/agreement/relational/test/shard{shard_id}"
         agreement_path = f"{BASE}/agreement.txt"
         caption_path = f"{BASE}/caption.txt"
@@ -733,6 +733,7 @@ if __name__ == "__main__":
     print(f"Entity1 (Shuffled) - COM distance: {np.mean(entity1_com_dists_shuffle):.4f}, IoU: {np.mean(entity1_ious_shuffle):.4f}, Soft IoU: {np.mean(entity1_soft_ious_shuffle):.4f}, Wasserstein: {np.mean(entity1_wassersteins_shuffle):.4f}")
     print(f"Entity2 (Shuffled) - COM distance: {np.mean(entity2_com_dists_shuffle):.4f}, IoU: {np.mean(entity2_ious_shuffle):.4f}, Soft IoU: {np.mean(entity2_soft_ious_shuffle):.4f}, Wasserstein: {np.mean(entity2_wassersteins_shuffle):.4f}")
     print(f"Relation token x-axis Wasserstein: {np.mean(relation_x_wassersteins):.4f}")
+    print(f"Relation token x-axis Wasserstein (Shuffled): {np.mean(relation_x_wassersteins_shuffle):.4f}")
     with open(f"{save_dir}/mean_analysis.txt", "w") as f:
         f.write("=== Mean Analysis over all samples ===\n")
         f.write(f"Entity1 - COM distance: {np.mean(entity1_com_dists):.4f}, IoU: {np.mean(entity1_ious):.4f}, Soft IoU: {np.mean(entity1_soft_ious):.4f}, Wasserstein: {np.mean(entity1_wassersteins):.4f}\n")
