@@ -33,7 +33,7 @@ tokenizer, model, _, context_len = load_pretrained_model(
 )
 
 model.eval()
-CAPTION_PATH = "/home/maqima/VLM-Visualizer/data/spatial_twoshapes/agreement/relational/shard0/caption.txt"
+CAPTION_BASE = "/home/maqima/VLM-Visualizer/data/spatial_twoshapes/agreement/relational/"
 
 
 H_REL = ["left", "right"]
@@ -151,17 +151,20 @@ results = []
 
 paired_captions = []
 
-with open(CAPTION_PATH) as f:
-    for line in f:
-        sent = line.strip()
-        if not sent:
-            continue
+for shard_id in range(5):
+    caption_path = os.path.join(
+        CAPTION_BASE, f"shard{shard_id}", "caption.txt"
+    )
+    with open(caption_path) as f:
+        for line in f:
+            sent = line.strip()
+            if not sent:
+                continue
+            cf = make_counterfactual_swap_entities_only(sent)
+            if cf is None:
+                continue
 
-        cf = make_counterfactual_swap_entities_only(sent)
-        if cf is None:
-            continue
-
-        paired_captions.append((sent, cf))
+            paired_captions.append((sent, cf))
 
 
 def relation_token_to_entities(sent, tokenizer, model, device):
