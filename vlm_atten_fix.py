@@ -509,16 +509,18 @@ if __name__ == "__main__":
     save_dir = "left_right_analysis_outputs"
     os.makedirs(save_dir, exist_ok=True)
     for shard_id in range(5):
-        BASE = f"/home/maqima/VLM-Visualizer/data/spatial_twoshapes/agreement/relational/test/shard{shard_id}"
-        agreement_path = f"{BASE}/agreement.txt"
+        BASE = f"/home/maqima/VLM-Visualizer/data/spatial_twoshapes/agreement/relational/shard{shard_id}"
+        #agreement_path = f"{BASE}/agreement.txt"
         caption_path = f"{BASE}/caption.txt"
-        agreement = [float(x.strip()) for x in open(agreement_path).readlines()]
+        #agreement = [float(x.strip()) for x in open(agreement_path).readlines()]
         captions = [x.strip() for x in open(caption_path).readlines()]
-        filtered_ids = [i for i, a in enumerate(agreement) if a == 1.0]
+        #filtered_ids = [i for i, a in enumerate(agreement) if a == 1.0]
+        filtered_ids = list(range(len(captions)))
         json_path = f"{BASE}/world_model.json"
         
 
         for sample_idx in filtered_ids:
+            print("Processing sample idx:", sample_idx)
             image_path = f"{BASE}/world-{sample_idx}.png"
             prompt = captions[sample_idx]
             # make sure "right" or "left" in prompt
