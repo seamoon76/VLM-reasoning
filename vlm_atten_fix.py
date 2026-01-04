@@ -526,8 +526,6 @@ if __name__ == "__main__":
             # make sure "right" or "left" in prompt
             if "right" not in prompt and "left" not in prompt:
                 continue
-            if "shape" in prompt:
-                continue
             
             world = json.load(open(json_path))
             entity1 = world[sample_idx]["entities"][0]
