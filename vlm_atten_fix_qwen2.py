@@ -18,7 +18,7 @@ device = "cuda" if torch.cuda.is_available() else "cpu"
 # ======= DATA: all shards =======
 NUM_SHARDS = 5
 BASE_ROOT = "/cluster/scratch/jiaysun/spatial_twoshapes/agreement/relational"  
-SPLIT = "test"  # e.g. "test" / "train" / "agreement"
+SPLIT = ""  # e.g. "test" / "train" / "agreement"
 
 FEED_SIZE = 672
 LAYER_MODE = "mid_third"   # all / first_third / mid_third / last_third / last_k
