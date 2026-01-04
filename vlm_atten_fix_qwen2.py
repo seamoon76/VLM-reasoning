@@ -15,15 +15,18 @@ from transformers import Qwen2VLForConditionalGeneration, AutoProcessor
 MODEL_ID = "Qwen/Qwen2-VL-7B-Instruct"
 device = "cuda" if torch.cuda.is_available() else "cpu"
 
-BASE = "/home/ubuntu/spatial_twoshapes/agreement/relational/test/shard0"
-json_path = f"{BASE}/world_model.json"
+# ======= DATA: all shards =======
+NUM_SHARDS = 5
+BASE_ROOT = "/cluster/scratch/jiaysun/spatial_twoshapes/agreement/relational"  
+SPLIT = ""  # e.g. "test" / "train" / "agreement"
 
-FEED_SIZE = 256
+FEED_SIZE = 672
 LAYER_MODE = "mid_third"   # all / first_third / mid_third / last_third / last_k
 LAST_K = 4
 
-save_dir = os.path.join(BASE, f"qwen2_metrics_feed{FEED_SIZE}_{LAYER_MODE}")
-os.makedirs(save_dir, exist_ok=True)
+# ======= OUTPUT =======
+OUT_ROOT = os.path.join(BASE_ROOT, SPLIT, f"qwen2_metrics_allshards_feed{FEED_SIZE}_{LAYER_MODE}")
+os.makedirs(OUT_ROOT, exist_ok=True)
 
 # =====================
 # DEBUG switches
@@ -32,6 +35,46 @@ DEBUG_ATTN = True              # 打印 attention 统计
 DEBUG_SHOW_TOKENS = False      # 打印 token 序列（很长，默认关）
 DEBUG_LAYERWISE = True         # 每层都打印一份 min/max & row-sum
 AUTO_SOFTMAX_IF_NEEDED = True  # 如果检测到不是概率（有负值或row-sum不≈1），自动 softmax(dim=-1)
+
+# =====================
+# Baseline: shuffled-image (PATCH shuffle, same spirit as your LLaVA baseline)
+# =====================
+ENABLE_SHUFFLED_IMAGE_BASELINE = True
+SHUFFLE_SEED = 123  # 为了可复现
+SHUFFLE_GRID_SIZE = 24  # baseline 24x24 patch shuffle（与 LLaVA baseline 一致）
+
+def shuffle_image_patches(image_pil: Image.Image, grid_size: int = 24, seed: int = 123) -> Image.Image:
+    """
+    Patch-level shuffle baseline（保持每个 patch 内容不变，只打乱 patch 位置）
+    - 与你 LLaVA baseline 的 shuffle_image_patches 逻辑一致
+    """
+    rng = np.random.RandomState(seed)
+    img = np.array(image_pil.convert("RGB"))
+    H, W, C = img.shape
+
+    # 防止不可整除导致错位：按 grid 切整块
+    patch_h = H // grid_size
+    patch_w = W // grid_size
+    H2 = patch_h * grid_size
+    W2 = patch_w * grid_size
+    img = img[:H2, :W2, :]
+
+    patches = []
+    for y in range(grid_size):
+        for x in range(grid_size):
+            patches.append(img[y*patch_h:(y+1)*patch_h, x*patch_w:(x+1)*patch_w].copy())
+
+    perm = rng.permutation(len(patches))
+    shuffled = [patches[i] for i in perm]
+
+    new_img = np.zeros_like(img)
+    idx = 0
+    for y in range(grid_size):
+        for x in range(grid_size):
+            new_img[y*patch_h:(y+1)*patch_h, x*patch_w:(x+1)*patch_w] = shuffled[idx]
+            idx += 1
+
+    return Image.fromarray(new_img)
 
 # =====================
 # Token cleaning / filtering
@@ -161,7 +204,6 @@ def visualize(image, attn_map, title):
     H = image_np.shape[0]
     attn_up = upsample_grid_to_image(attn_map, H)
 
-    # debug: print stats before normalization
     if DEBUG_ATTN:
         amin = float(attn_map.min().item())
         amean = float(attn_map.mean().item())
@@ -237,7 +279,6 @@ def get_patch_self_attention_map(attn, seed_idx, grid_h, grid_w, remove_self=Tru
         vec[seed_idx] = 0.0
     vec = vec / (vec.sum() + 1e-6)
     return vec.reshape(grid_h, grid_w)
-
 
 # =====================
 # Metrics
@@ -357,7 +398,7 @@ def compute_entity_metrics(attn_map, gt_mask, other_gt_mask=None, debug_tag=None
     }
 
 # =====================
-# GT bbox -> patch mask
+# GT bbox -> patch mask (normalized bbox to patch grid)
 # =====================
 def gt_bbox_to_patch_mask_norm(entity, grid_h, grid_w):
     xmin = entity["bounding_box"]["topleft"]["x"]
@@ -383,19 +424,10 @@ def gt_bbox_to_patch_mask_norm(entity, grid_h, grid_w):
 # Attention debug helpers
 # =====================
 def _attn_row_sum_stats(attn_probs_2d: torch.Tensor):
-    # attn_probs_2d: (T, T)
     rs = attn_probs_2d.sum(dim=-1)
     return float(rs.min().item()), float(rs.max().item()), float(rs.mean().item())
 
 def _decide_need_softmax(a_head_TT: torch.Tensor):
-    """
-    输入可以是 (H,T,T) 或 (T,T)
-    返回:
-      need_softmax: bool
-      amin: mean-attn 的最小值
-      row_sum_min: mean-attn 每行和的最小值
-      row_sum_mean: mean-attn 每行和的平均值
-    """
     if a_head_TT.dim() == 3:
         m = a_head_TT.mean(dim=0)  # (T,T)
     else:
@@ -406,16 +438,24 @@ def _decide_need_softmax(a_head_TT: torch.Tensor):
     row_sum_min = float(row_sums.min().item())
     row_sum_mean = float(row_sums.mean().item())
 
-    # 经验判断：有负值 or row-sum 明显不为 1 -> 认为是 logits
     need = (amin < -1e-6) or (abs(row_sum_mean - 1.0) > 0.05) or (abs(row_sum_min - 1.0) > 0.05)
     return need, amin, row_sum_min, row_sum_mean
 
-
 # =====================
-# Core: Qwen2 attention extraction
+# Core: Qwen2 attention extraction (UNCHANGED, you said it is correct)
 # =====================
-def extract_prompt_level_cross_attention_qwen2(image_path, prompt_text, model, processor):
-    img0 = Image.open(image_path).convert("RGB")
+def extract_prompt_level_cross_attention_qwen2(image_pil, prompt_text, model, processor, debug_prefix=""):
+    """
+    image_pil: PIL.Image (RGB)
+    Return:
+        cross_attn: (Tprompt_filtered, Nvision)   # text->vision
+        prompt_words: grouped words with token ids
+        image_feed: PIL resized
+        vis_self_attn: (Nvision, Nvision)
+        gh, gw: grid of Nvision
+        token_to_promptidx: mapping raw token id -> row index in cross_attn
+    """
+    img0 = image_pil.convert("RGB")
     image_feed = img0.resize((FEED_SIZE, FEED_SIZE), resample=Image.BILINEAR)
 
     messages = [{
@@ -457,78 +497,70 @@ def extract_prompt_level_cross_attention_qwen2(image_path, prompt_text, model, p
     L = len(attns)
     layers = get_layer_indices(L, mode=LAYER_MODE, last_k=LAST_K)
 
-    # -------------------------
-    # Layer-wise debug + (optional) softmax
-    # -------------------------
     mats = []
     need_softmax_votes = 0
 
     for la in layers:
         a = attns[la][0].detach().float().cpu()   # (H,T,T)
 
-        # debug per-layer
         if DEBUG_LAYERWISE:
             m = a.mean(dim=0)  # (T,T)
             amin = float(m.min().item())
             amax = float(m.max().item())
             rmin, rmax, rmean = _attn_row_sum_stats(m)
-            print(f"[L{la}] mean-attn min/max={amin:.6g}/{amax:.6g} | row-sum(min/max/mean)={rmin:.6g}/{rmax:.6g}/{rmean:.6g}")
+            print(f"{debug_prefix}[L{la}] mean-attn min/max={amin:.6g}/{amax:.6g} | row-sum(min/max/mean)={rmin:.6g}/{rmax:.6g}/{rmean:.6g}")
 
-        # decide softmax
-        need_sf, amin2, rmin2, rmean2 = _decide_need_softmax(a)
+        need_sf, _, _, _ = _decide_need_softmax(a)
         if need_sf:
             need_softmax_votes += 1
 
         if AUTO_SOFTMAX_IF_NEEDED and need_sf:
             a = torch.softmax(a, dim=-1)
 
-        mats.append(a.mean(dim=0))  # (T,T), now should be probs if softmax was applied
+        mats.append(a.mean(dim=0))  # (T,T)
 
     attn_full = torch.stack(mats, dim=0).mean(dim=0)  # (T,T)
 
-    # global debug
     if DEBUG_ATTN:
         amin = float(attn_full.min().item())
         amax = float(attn_full.max().item())
         rmin, rmax, rmean = _attn_row_sum_stats(attn_full)
-        print(f"[FULL] min/max={amin:.6g}/{amax:.6g} | row-sum(min/max/mean)={rmin:.6g}/{rmax:.6g}/{rmean:.6g} | softmax_votes={need_softmax_votes}/{len(layers)}")
+        print(f"{debug_prefix}[FULL] min/max={amin:.6g}/{amax:.6g} | row-sum(min/max/mean)={rmin:.6g}/{rmax:.6g}/{rmean:.6g} | softmax_votes={need_softmax_votes}/{len(layers)}")
         if amin < -1e-6:
-            print("[WARN] attn_full has negative values -> not a probability attention (or numerical issue).")
+            print(f"{debug_prefix}[WARN] attn_full has negative values -> not a probability attention (or numerical issue).")
         if abs(rmean - 1.0) > 0.05:
-            print("[WARN] attn_full row-sum mean not ~1 -> likely not softmax probs.")
+            print(f"{debug_prefix}[WARN] attn_full row-sum mean not ~1 -> likely not softmax probs.")
 
-    # cross: vision queries -> prompt tokens
-    cross_attn = attn_full[prompt_token_ids][:, vision_token_ids].clone()  # [Nvision, Tprompt_filtered]
+    # cross: prompt tokens -> vision tokens
+    cross_attn = attn_full[prompt_token_ids][:, vision_token_ids].clone()  # (Tprompt_filtered, Nvision)
     cross_attn = cross_attn / (cross_attn.sum(dim=1, keepdim=True) + 1e-6)
 
-    # vision self-attn in LM block
+    # vision self-attn
     vis_self_attn = attn_full[vision_token_ids][:, vision_token_ids].clone()
     vis_self_attn = vis_self_attn / (vis_self_attn.sum(dim=1, keepdim=True) + 1e-6)
 
-    # cross/self debug stats
     if DEBUG_ATTN:
         cmin = float(cross_attn.min().item()); cmax = float(cross_attn.max().item())
         vmin = float(vis_self_attn.min().item()); vmax = float(vis_self_attn.max().item())
         crow = cross_attn.sum(dim=1)
         vrow = vis_self_attn.sum(dim=1)
-        print(f"[CROSS] min/max={cmin:.6g}/{cmax:.6g} row-sum(min/max/mean)={float(crow.min()):.6g}/{float(crow.max()):.6g}/{float(crow.mean()):.6g}")
-        print(f"[VSELF] min/max={vmin:.6g}/{vmax:.6g} row-sum(min/max/mean)={float(vrow.min()):.6g}/{float(vrow.max()):.6g}/{float(vrow.mean()):.6g}")
+        print(f"{debug_prefix}[CROSS] min/max={cmin:.6g}/{cmax:.6g} row-sum(min/max/mean)={float(crow.min()):.6g}/{float(crow.max()):.6g}/{float(crow.mean()):.6g}")
+        print(f"{debug_prefix}[VSELF] min/max={vmin:.6g}/{vmax:.6g} row-sum(min/max/mean)={float(vrow.min()):.6g}/{float(vrow.max()):.6g}/{float(vrow.mean()):.6g}")
 
     print("\n====================")
-    print("Image:", image_path)
-    print("Feed size:", image_feed.size)
-    print("T total tokens:", T)
-    print("vision span:", vs, ve, "Nvision:", Nvision, "grid:", f"{gh}x{gw}")
-    print("caption span:", cap_s, cap_e, "| prompt tokens(filtered):", len(prompt_token_ids))
-    print("Selected layers:", layers, f"(mode={LAYER_MODE}, last_k={LAST_K})")
-    print("Caption words (grouped):")
+    print(debug_prefix + "Feed size:", image_feed.size)
+    print(debug_prefix + "T total tokens:", T)
+    print(debug_prefix + "vision span:", vs, ve, "Nvision:", Nvision, "grid:", f"{gh}x{gw}")
+    print(debug_prefix + "caption span:", cap_s, cap_e, "| prompt tokens(filtered):", len(prompt_token_ids))
+    print(debug_prefix + "Selected layers:", layers, f"(mode={LAYER_MODE}, last_k={LAST_K})")
+    print(debug_prefix + "Caption words (grouped):")
     for g in prompt_words:
         print(f"  {g['word']}\t{g['tok_ids']}")
     print("====================\n")
 
-    print("Text->Vision attn shape:", tuple(cross_attn.T.shape), " (Tprompt, Nvision)")
-    print("Vision self-attn shape:", tuple(vis_self_attn.shape), " (Nvision, Nvision)")
-    print("grid:", gh, gw)
+    print(debug_prefix + "Text->Vision attn shape:", tuple(cross_attn.shape), " (Tprompt, Nvision)")
+    print(debug_prefix + "Vision self-attn shape:", tuple(vis_self_attn.shape), " (Nvision, Nvision)")
+    print(debug_prefix + "grid:", gh, gw)
 
     return cross_attn, prompt_words, image_feed, vis_self_attn, gh, gw, token_to_promptidx
 
@@ -548,20 +580,14 @@ def pool_attention_qwen2(cross_attn, tok_ids, token_to_promptidx, mode="mean"):
         raise ValueError
 
 # =====================
-# Main
+# Mean helpers
 # =====================
-world = json.load(open(json_path))
+def safe_mean(x):
+    return float(np.mean(x)) if len(x) > 0 else float("nan")
 
-entity1_com_dists, entity2_com_dists = [], []
-entity1_ious, entity2_ious = [], []
-entity1_soft_ious, entity2_soft_ious = [], []
-entity1_wassersteins, entity2_wassersteins = [], []
-relation_x_wassersteins = []
-
-entity1_self_attn_metrics_all = {k: [] for k in ["com", "iou", "soft_iou", "wasserstein_x", "entity_bg_ratio", "disperson"]}
-entity2_self_attn_metrics_all = {k: [] for k in ["com", "iou", "soft_iou", "wasserstein_x", "entity_bg_ratio", "disperson"]}
-bg_dispersons = []
-
+# =====================
+# Load model once
+# =====================
 model = Qwen2VLForConditionalGeneration.from_pretrained(
     MODEL_ID,
     torch_dtype=torch.bfloat16,
@@ -571,188 +597,372 @@ model = Qwen2VLForConditionalGeneration.from_pretrained(
 processor = AutoProcessor.from_pretrained(MODEL_ID)
 model.eval()
 
-sample_list = [1,3,4,9,10,11,25,26,29,49,50,52,91,99]
+# =====================
+# Global accumulators (ALL SHARDS)
+# =====================
 
-for sample_idx in sample_list:
-    image_path = f"{BASE}/world-{sample_idx}.png"
+# --- real metrics ---
+entity1_com_dists, entity2_com_dists = [], []
+entity1_ious, entity2_ious = [], []
+entity1_soft_ious, entity2_soft_ious = [], []
+entity1_wassersteins, entity2_wassersteins = [], []
+relation_x_wassersteins = []
 
-    prompts = {
-        1: "a pentagon is to the right of an ellipse .",
-        3: "a red triangle is to the left of a blue semicircle .",
-        4: "a triangle is to the right of an ellipse .",
-        9: "a cross is to the right of a semicircle .",
-        10:"a cross is to the right of a rectangle .",
-        11:"a blue circle is to the right of a semicircle .",
-        25:"a blue semicircle is to the right of a yellow cross .",
-        26:"a gray cross is to the right of a green semicircle .",
-        29:"a blue ellipse is to the right of a yellow square .",
-        49:"a magenta pentagon is to the left of a magenta circle .",
-        50:"a pentagon is to the right of a magenta circle .",
-        52:"a green cross is to the left of a magenta circle .",
-        91:"a yellow square is to the right of a blue ellipse .",
-        99:"a magenta square is to the left of a magenta circle .",
-    }
-    prompt = prompts[sample_idx]
+# --- shuffled baseline metrics ---
+entity1_com_dists_shuf, entity2_com_dists_shuf = [], []
+entity1_ious_shuf, entity2_ious_shuf = [], []
+entity1_soft_ious_shuf, entity2_soft_ious_shuf = [], []
+entity1_wassersteins_shuf, entity2_wassersteins_shuf = [], []
+relation_x_wassersteins_shuf = []
 
-    entity1 = world[sample_idx]["entities"][0]
-    entity2 = world[sample_idx]["entities"][1]
-    entity1_name = entity1["shape"]["name"].lower()
-    entity2_name = entity2["shape"]["name"].lower()
+# --- vision self-attn metrics (real) ---
+entity1_self_attn_metrics_all = {k: [] for k in ["com", "iou", "soft_iou", "wasserstein_x", "entity_bg_ratio", "disperson"]}
+entity2_self_attn_metrics_all = {k: [] for k in ["com", "iou", "soft_iou", "wasserstein_x", "entity_bg_ratio", "disperson"]}
+bg_dispersons = []
 
-    relation = "right" if "right" in prompt else "left"
+# --- vision self-attn metrics (baseline) ---
+entity1_self_attn_metrics_all_shuf = {k: [] for k in ["com", "iou", "soft_iou", "wasserstein_x", "entity_bg_ratio", "disperson"]}
+entity2_self_attn_metrics_all_shuf = {k: [] for k in ["com", "iou", "soft_iou", "wasserstein_x", "entity_bg_ratio", "disperson"]}
+bg_dispersons_shuf = []
 
-    cross_attn, prompt_words, image, vis_self_attn, gh, gw, token_to_promptidx = \
-        extract_prompt_level_cross_attention_qwen2(image_path, prompt, model, processor)
+# =====================
+# Main: iterate all shards, all samples
+# =====================
+for shard_id in range(NUM_SHARDS):
+    BASE = os.path.join(BASE_ROOT, SPLIT, f"shard{shard_id}")
+    json_path = os.path.join(BASE, "world_model.json")
+    caption_path = os.path.join(BASE, "caption.txt")
 
-    cross_attn = torch.nan_to_num(cross_attn, nan=0.0)
-    vis_self_attn = torch.nan_to_num(vis_self_attn, nan=0.0)
-
-    # ---- build masks on gh x gw ----
-    mask_entity1 = gt_bbox_to_patch_mask_norm(entity1, gh, gw)
-    mask_entity2 = gt_bbox_to_patch_mask_norm(entity2, gh, gw)
-
-    # ---- visualize masks + overlap ----
-    m1_only, m2_only, overlap, bg_mask = _exclusive_masks(mask_entity1, mask_entity2)
-    visualize_mask(image, mask_entity1, f"{save_dir}/{sample_idx}_{entity1_name}_GT_mask")
-    visualize_mask(image, mask_entity2, f"{save_dir}/{sample_idx}_{entity2_name}_GT_mask")
-    visualize_mask(image, bg_mask,      f"{save_dir}/{sample_idx}_background_GT_mask")
-    visualize_mask(image, overlap,      f"{save_dir}/{sample_idx}_overlap_GT_mask", cmap="Reds", alpha=0.7)
-
-    # ---- token ids ----
-    entity1_tokids = find_word_tokids(prompt_words, entity1_name)
-    relation_tokids = find_word_tokids(prompt_words, relation)
-    entity2_tokids = find_word_tokids(prompt_words, entity2_name)
-
-    print(f"{entity1_name} tok_ids:", entity1_tokids)
-    print(f"{relation} tok_ids:", relation_tokids)
-    print(f"{entity2_name} tok_ids:", entity2_tokids)
-
-    # ---- pooled attentions: [Nvision] ----
-    entity1_attn = pool_attention_qwen2(cross_attn, entity1_tokids, token_to_promptidx, mode="mean")
-    entity2_attn = pool_attention_qwen2(cross_attn, entity2_tokids, token_to_promptidx, mode="mean")
-    relation_attn = pool_attention_qwen2(cross_attn, relation_tokids, token_to_promptidx, mode="mean")
-
-    if relation_attn is None:
-        print("[WARN] relation token not found; skip sample.")
+    if not os.path.exists(json_path):
+        print(f"[WARN] missing json: {json_path}, skip shard{shard_id}")
+        continue
+    if not os.path.exists(caption_path):
+        print(f"[WARN] missing caption: {caption_path}, skip shard{shard_id}")
         continue
 
-    entity1_map = entity1_attn.reshape(gh, gw) if entity1_attn is not None else None
-    entity2_map = entity2_attn.reshape(gh, gw) if entity2_attn is not None else None
-    relation_map = relation_attn.reshape(gh, gw)
+    world = json.load(open(json_path))
+    captions = [x.strip() for x in open(caption_path).readlines()]
+    filtered_ids = list(range(len(captions)))
 
-    # ---- visualize ----
-    if entity1_map is not None:
-        visualize(image, entity1_map, f"{save_dir}/{sample_idx}_{entity1_name}_attention")
-    visualize(image, relation_map, f"{save_dir}/{sample_idx}_{relation}_attention")
-    if entity2_map is not None:
-        visualize(image, entity2_map, f"{save_dir}/{sample_idx}_{entity2_name}_attention")
+    shard_save_dir = os.path.join(OUT_ROOT, f"shard{shard_id}")
+    os.makedirs(shard_save_dir, exist_ok=True)
 
-    metric_path = f"{save_dir}/metrics_sample_{sample_idx}.txt"
-    with open(metric_path, "w") as f:
-        f.write(f"sample idx: {sample_idx}\n")
-        f.write(f"grid: {gh}x{gw}\n")
-        f.write(f"prompt: {prompt}\n")
+    print(f"\n========== Processing shard{shard_id}: {BASE} | #samples={len(filtered_ids)} ==========\n")
 
-    # ---- entity metrics ----
-    if entity1_map is not None:
-        entity1_com_dist = compute_center_of_mass_distance(entity1_map, mask_entity1)
-        entity1_iou = compute_iou(entity1_map, mask_entity1)
-        entity1_soft_iou = compute_soft_iou(entity1_map, mask_entity1)
-        entity1_wasserstein = compute_x_wasserstein(entity1_map, mask_entity1)
+    for sample_idx in filtered_ids:
+        prompt = captions[sample_idx]
+        if ("right" not in prompt) and ("left" not in prompt):
+            continue
 
-        entity1_com_dists.append(entity1_com_dist)
-        entity1_ious.append(entity1_iou)
-        entity1_soft_ious.append(entity1_soft_iou)
-        entity1_wassersteins.append(entity1_wasserstein)
+        image_path = os.path.join(BASE, f"world-{sample_idx}.png")
+        if not os.path.exists(image_path):
+            print(f"[WARN] missing image: {image_path}, skip")
+            continue
+
+        print(f"Processing shard{shard_id} sample idx: {sample_idx}")
+
+        entity1 = world[sample_idx]["entities"][0]
+        entity2 = world[sample_idx]["entities"][1]
+        entity1_name = entity1["shape"]["name"].lower()
+        entity2_name = entity2["shape"]["name"].lower()
+        relation = "right" if "right" in prompt else "left"
+
+        img_orig = Image.open(image_path).convert("RGB")
+
+        # =====================
+        # REAL
+        # =====================
+        cross_attn, prompt_words, image_feed, vis_self_attn, gh, gw, token_to_promptidx = \
+            extract_prompt_level_cross_attention_qwen2(img_orig, prompt, model, processor, debug_prefix=f"[REAL s{shard_id} i{sample_idx}] ")
+
+        cross_attn = torch.nan_to_num(cross_attn, nan=0.0)
+        vis_self_attn = torch.nan_to_num(vis_self_attn, nan=0.0)
+
+        # masks on gh x gw
+        mask_entity1 = gt_bbox_to_patch_mask_norm(entity1, gh, gw)
+        mask_entity2 = gt_bbox_to_patch_mask_norm(entity2, gh, gw)
+
+        # visualize masks (optional but same as your current script)
+        m1_only, m2_only, overlap, bg_mask = _exclusive_masks(mask_entity1, mask_entity2)
+        visualize_mask(image_feed, mask_entity1, f"{shard_save_dir}/{sample_idx}_{entity1_name}_GT_mask")
+        visualize_mask(image_feed, mask_entity2, f"{shard_save_dir}/{sample_idx}_{entity2_name}_GT_mask")
+        visualize_mask(image_feed, bg_mask,      f"{shard_save_dir}/{sample_idx}_background_GT_mask")
+        visualize_mask(image_feed, overlap,      f"{shard_save_dir}/{sample_idx}_overlap_GT_mask", cmap="Reds", alpha=0.7)
+
+        # token ids
+        entity1_tokids = find_word_tokids(prompt_words, entity1_name)
+        relation_tokids = find_word_tokids(prompt_words, relation)
+        entity2_tokids = find_word_tokids(prompt_words, entity2_name)
+
+        print(f"{entity1_name} tok_ids:", entity1_tokids)
+        print(f"{relation} tok_ids:", relation_tokids)
+        print(f"{entity2_name} tok_ids:", entity2_tokids)
+
+        # pooled attentions: [Nvision]
+        entity1_attn = pool_attention_qwen2(cross_attn, entity1_tokids, token_to_promptidx, mode="mean")
+        entity2_attn = pool_attention_qwen2(cross_attn, entity2_tokids, token_to_promptidx, mode="mean")
+        relation_attn = pool_attention_qwen2(cross_attn, relation_tokids, token_to_promptidx, mode="mean")
+        if relation_attn is None:
+            print("[WARN] relation token not found; skip sample.")
+            continue
+
+        entity1_map = entity1_attn.reshape(gh, gw) if entity1_attn is not None else None
+        entity2_map = entity2_attn.reshape(gh, gw) if entity2_attn is not None else None
+        relation_map = relation_attn.reshape(gh, gw)
+
+        # visualize attn maps (REAL)
+        if entity1_map is not None:
+            visualize(image_feed, entity1_map, f"{shard_save_dir}/{sample_idx}_{entity1_name}_attention_REAL")
+        visualize(image_feed, relation_map, f"{shard_save_dir}/{sample_idx}_{relation}_attention_REAL")
+        if entity2_map is not None:
+            visualize(image_feed, entity2_map, f"{shard_save_dir}/{sample_idx}_{entity2_name}_attention_REAL")
+
+        metric_path = os.path.join(shard_save_dir, f"metrics_sample_{sample_idx}.txt")
+        with open(metric_path, "w") as f:
+            f.write(f"shard idx: {shard_id}\n")
+            f.write(f"sample idx: {sample_idx}\n")
+            f.write(f"grid: {gh}x{gw}\n")
+            f.write(f"prompt: {prompt}\n")
+            f.write(f"baseline: patch-shuffle enabled={ENABLE_SHUFFLED_IMAGE_BASELINE}, seed={SHUFFLE_SEED}, grid={SHUFFLE_GRID_SIZE}\n\n")
+
+        # entity metrics (REAL)
+        if entity1_map is not None:
+            e1_com = compute_center_of_mass_distance(entity1_map, mask_entity1)
+            e1_iou = compute_iou(entity1_map, mask_entity1)
+            e1_sio = compute_soft_iou(entity1_map, mask_entity1)
+            e1_wx  = compute_x_wasserstein(entity1_map, mask_entity1)
+
+            entity1_com_dists.append(e1_com)
+            entity1_ious.append(e1_iou)
+            entity1_soft_ious.append(e1_sio)
+            entity1_wassersteins.append(e1_wx)
+
+            with open(metric_path, "a") as f:
+                f.write(f"[REAL] Entity1({entity1_name}) - COM: {e1_com:.4f}, IoU: {e1_iou:.4f}, SoftIoU: {e1_sio:.4f}, WassersteinX: {e1_wx:.4f}\n")
+
+        if entity2_map is not None:
+            e2_com = compute_center_of_mass_distance(entity2_map, mask_entity2)
+            e2_iou = compute_iou(entity2_map, mask_entity2)
+            e2_sio = compute_soft_iou(entity2_map, mask_entity2)
+            e2_wx  = compute_x_wasserstein(entity2_map, mask_entity2)
+
+            entity2_com_dists.append(e2_com)
+            entity2_ious.append(e2_iou)
+            entity2_soft_ious.append(e2_sio)
+            entity2_wassersteins.append(e2_wx)
+
+            with open(metric_path, "a") as f:
+                f.write(f"[REAL] Entity2({entity2_name}) - COM: {e2_com:.4f}, IoU: {e2_iou:.4f}, SoftIoU: {e2_sio:.4f}, WassersteinX: {e2_wx:.4f}\n")
+
+        # relation metric (REAL)
+        gt_relation_x = build_relation_gt_x(mask_entity1, mask_entity2, relation)
+        attn_x = get_attn_x_distribution(relation_map)
+        rel_w = compute_x_wasserstein_from_distributions(attn_x, gt_relation_x)
+        relation_x_wassersteins.append(rel_w)
+        with open(metric_path, "a") as f:
+            f.write(f"[REAL] Relation({relation}) x-axis Wasserstein: {rel_w:.4f}\n")
+
+        # vision self-attn (REAL)
+        seed1 = get_entity_center_seed(mask_entity1)
+        seed2 = get_entity_center_seed(mask_entity2)
+        bg_seed = get_background_seed(mask_entity1, mask_entity2)
+
+        e1_self = get_patch_self_attention_map(vis_self_attn, seed1, gh, gw)
+        e2_self = get_patch_self_attention_map(vis_self_attn, seed2, gh, gw)
+
+        if bg_seed is not None:
+            bg_self = get_patch_self_attention_map(vis_self_attn, bg_seed, gh, gw)
+            bg_disp = compute_disperson(bg_self)
+            bg_dispersons.append(bg_disp)
+            with open(metric_path, "a") as f:
+                f.write(f"[REAL] Background disperson: {bg_disp:.4f}\n")
+
+        visualize_patch_self_attn(image_feed, e1_self, f"{shard_save_dir}/{sample_idx}_entity1_self_attention_REAL")
+        visualize_patch_self_attn(image_feed, e2_self, f"{shard_save_dir}/{sample_idx}_entity2_self_attention_REAL")
+
+        m1 = compute_entity_metrics(e1_self, mask_entity1, other_gt_mask=mask_entity2, debug_tag="entity1_self_REAL")
+        m2 = compute_entity_metrics(e2_self, mask_entity2, other_gt_mask=mask_entity1, debug_tag="entity2_self_REAL")
+
+        for k in entity1_self_attn_metrics_all:
+            entity1_self_attn_metrics_all[k].append(m1[k])
+            entity2_self_attn_metrics_all[k].append(m2[k])
 
         with open(metric_path, "a") as f:
-            f.write(f"Entity1({entity1_name}) - COM: {entity1_com_dist:.4f}, IoU: {entity1_iou:.4f}, SoftIoU: {entity1_soft_iou:.4f}, WassersteinX: {entity1_wasserstein:.4f}\n")
+            f.write("\n[REAL] Vision Self-Attention (LM vision sub-block)\n")
+            for k, v in m1.items():
+                f.write(f"[REAL] Entity1 self {k}: {v:.4f}\n")
+            for k, v in m2.items():
+                f.write(f"[REAL] Entity2 self {k}: {v:.4f}\n")
 
-    if entity2_map is not None:
-        entity2_com_dist = compute_center_of_mass_distance(entity2_map, mask_entity2)
-        entity2_iou = compute_iou(entity2_map, mask_entity2)
-        entity2_soft_iou = compute_soft_iou(entity2_map, mask_entity2)
-        entity2_wasserstein = compute_x_wasserstein(entity2_map, mask_entity2)
+        # =====================
+        # Baseline: PATCH-SHUFFLED IMAGE (same masks, same prompt)
+        # =====================
+        if ENABLE_SHUFFLED_IMAGE_BASELINE:
+            # baseline should operate on the FEED_SIZE image (like your original baseline did)
+            img_for_shuffle = img_orig.resize((FEED_SIZE, FEED_SIZE), resample=Image.BILINEAR)
+            img_shuf = shuffle_image_patches(
+                img_for_shuffle,
+                grid_size=SHUFFLE_GRID_SIZE,
+                seed=SHUFFLE_SEED + shard_id * 100000 + sample_idx
+            )
 
-        entity2_com_dists.append(entity2_com_dist)
-        entity2_ious.append(entity2_iou)
-        entity2_soft_ious.append(entity2_soft_iou)
-        entity2_wassersteins.append(entity2_wasserstein)
+            cross_b, prompt_words_b, image_feed_b, vis_self_b, gh_b, gw_b, token_to_promptidx_b = \
+                extract_prompt_level_cross_attention_qwen2(img_shuf, prompt, model, processor, debug_prefix=f"[SHUF s{shard_id} i{sample_idx}] ")
 
-        with open(metric_path, "a") as f:
-            f.write(f"Entity2({entity2_name}) - COM: {entity2_com_dist:.4f}, IoU: {entity2_iou:.4f}, SoftIoU: {entity2_soft_iou:.4f}, WassersteinX: {entity2_wasserstein:.4f}\n")
+            cross_b = torch.nan_to_num(cross_b, nan=0.0)
+            vis_self_b = torch.nan_to_num(vis_self_b, nan=0.0)
 
-    # ---- relation metric ----
-    gt_relation_x = build_relation_gt_x(mask_entity1, mask_entity2, relation)
-    attn_x = get_attn_x_distribution(relation_map)
-    relation_x_w = compute_x_wasserstein_from_distributions(attn_x, gt_relation_x)
-    relation_x_wassersteins.append(relation_x_w)
-    with open(metric_path, "a") as f:
-        f.write(f"Relation({relation}) x-axis Wasserstein: {relation_x_w:.4f}\n")
+            if (gh_b != gh) or (gw_b != gw):
+                print(f"[WARN] baseline grid mismatch: real={gh}x{gw}, shuf={gh_b}x{gw_b}. Skip baseline metrics for this sample.")
+            else:
+                # token ids baseline
+                e1_tok_b = find_word_tokids(prompt_words_b, entity1_name)
+                rel_tok_b = find_word_tokids(prompt_words_b, relation)
+                e2_tok_b = find_word_tokids(prompt_words_b, entity2_name)
 
-    # =====================
-    # vision self-attention analysis
-    # =====================
-    seed1 = get_entity_center_seed(mask_entity1)
-    seed2 = get_entity_center_seed(mask_entity2)
-    bg_seed = get_background_seed(mask_entity1, mask_entity2)
+                e1_att_b = pool_attention_qwen2(cross_b, e1_tok_b, token_to_promptidx_b, mode="mean")
+                e2_att_b = pool_attention_qwen2(cross_b, e2_tok_b, token_to_promptidx_b, mode="mean")
+                rel_att_b = pool_attention_qwen2(cross_b, rel_tok_b, token_to_promptidx_b, mode="mean")
+                if rel_att_b is None:
+                    print("[WARN] relation token not found in baseline; skip baseline.")
+                else:
+                    e1_map_b = e1_att_b.reshape(gh, gw) if e1_att_b is not None else None
+                    e2_map_b = e2_att_b.reshape(gh, gw) if e2_att_b is not None else None
+                    rel_map_b = rel_att_b.reshape(gh, gw)
 
-    entity1_self_map = get_patch_self_attention_map(vis_self_attn, seed1, gh, gw)
-    entity2_self_map = get_patch_self_attention_map(vis_self_attn, seed2, gh, gw)
+                    # visualize baseline
+                    if e1_map_b is not None:
+                        visualize(image_feed_b, e1_map_b, f"{shard_save_dir}/{sample_idx}_{entity1_name}_attention_SHUF")
+                    visualize(image_feed_b, rel_map_b, f"{shard_save_dir}/{sample_idx}_{relation}_attention_SHUF")
+                    if e2_map_b is not None:
+                        visualize(image_feed_b, e2_map_b, f"{shard_save_dir}/{sample_idx}_{entity2_name}_attention_SHUF")
 
-    if bg_seed is not None:
-        bg_self_map = get_patch_self_attention_map(vis_self_attn, bg_seed, gh, gw)
-        bg_disperson = compute_disperson(bg_self_map)
-        bg_dispersons.append(bg_disperson)
-        with open(metric_path, "a") as f:
-            f.write(f"Background disperson: {bg_disperson:.4f}\n")
+                    with open(metric_path, "a") as f:
+                        f.write("\n[SHUF] ===== Patch-Shuffle Baseline =====\n")
 
-    visualize_patch_self_attn(image, entity1_self_map, f"{save_dir}/{sample_idx}_entity1_self_attention")
-    visualize_patch_self_attn(image, entity2_self_map, f"{save_dir}/{sample_idx}_entity2_self_attention")
+                    # entity metrics baseline
+                    if e1_map_b is not None:
+                        e1_com_b = compute_center_of_mass_distance(e1_map_b, mask_entity1)
+                        e1_iou_b = compute_iou(e1_map_b, mask_entity1)
+                        e1_sio_b = compute_soft_iou(e1_map_b, mask_entity1)
+                        e1_wx_b  = compute_x_wasserstein(e1_map_b, mask_entity1)
 
-    m1 = compute_entity_metrics(entity1_self_map, mask_entity1, other_gt_mask=mask_entity2, debug_tag="entity1_self")
-    m2 = compute_entity_metrics(entity2_self_map, mask_entity2, other_gt_mask=mask_entity1, debug_tag="entity2_self")
+                        entity1_com_dists_shuf.append(e1_com_b)
+                        entity1_ious_shuf.append(e1_iou_b)
+                        entity1_soft_ious_shuf.append(e1_sio_b)
+                        entity1_wassersteins_shuf.append(e1_wx_b)
 
-    for k in entity1_self_attn_metrics_all:
-        entity1_self_attn_metrics_all[k].append(m1[k])
-        entity2_self_attn_metrics_all[k].append(m2[k])
+                        with open(metric_path, "a") as f:
+                            f.write(f"[SHUF] Entity1({entity1_name}) - COM: {e1_com_b:.4f}, IoU: {e1_iou_b:.4f}, SoftIoU: {e1_sio_b:.4f}, WassersteinX: {e1_wx_b:.4f}\n")
 
-    with open(metric_path, "a") as f:
-        f.write("Vision Self-Attention (LM vision sub-block)\n")
-        for k, v in m1.items():
-            f.write(f"Entity1 self {k}: {v:.4f}\n")
-        for k, v in m2.items():
-            f.write(f"Entity2 self {k}: {v:.4f}\n")
+                    if e2_map_b is not None:
+                        e2_com_b = compute_center_of_mass_distance(e2_map_b, mask_entity2)
+                        e2_iou_b = compute_iou(e2_map_b, mask_entity2)
+                        e2_sio_b = compute_soft_iou(e2_map_b, mask_entity2)
+                        e2_wx_b  = compute_x_wasserstein(e2_map_b, mask_entity2)
 
-    print(f"[OK] sample {sample_idx} saved metrics/figs under: {save_dir}")
+                        entity2_com_dists_shuf.append(e2_com_b)
+                        entity2_ious_shuf.append(e2_iou_b)
+                        entity2_soft_ious_shuf.append(e2_sio_b)
+                        entity2_wassersteins_shuf.append(e2_wx_b)
+
+                        with open(metric_path, "a") as f:
+                            f.write(f"[SHUF] Entity2({entity2_name}) - COM: {e2_com_b:.4f}, IoU: {e2_iou_b:.4f}, SoftIoU: {e2_sio_b:.4f}, WassersteinX: {e2_wx_b:.4f}\n")
+
+                    # relation baseline
+                    attn_x_b = get_attn_x_distribution(rel_map_b)
+                    rel_w_b = compute_x_wasserstein_from_distributions(attn_x_b, gt_relation_x)
+                    relation_x_wassersteins_shuf.append(rel_w_b)
+                    with open(metric_path, "a") as f:
+                        f.write(f"[SHUF] Relation({relation}) x-axis Wasserstein: {rel_w_b:.4f}\n")
+
+                    # self-attn baseline
+                    seed1_b = get_entity_center_seed(mask_entity1)
+                    seed2_b = get_entity_center_seed(mask_entity2)
+                    bg_seed_b = get_background_seed(mask_entity1, mask_entity2)
+
+                    e1_self_b = get_patch_self_attention_map(vis_self_b, seed1_b, gh, gw)
+                    e2_self_b = get_patch_self_attention_map(vis_self_b, seed2_b, gh, gw)
+
+                    if bg_seed_b is not None:
+                        bg_self_b = get_patch_self_attention_map(vis_self_b, bg_seed_b, gh, gw)
+                        bg_disp_b = compute_disperson(bg_self_b)
+                        bg_dispersons_shuf.append(bg_disp_b)
+                        with open(metric_path, "a") as f:
+                            f.write(f"[SHUF] Background disperson: {bg_disp_b:.4f}\n")
+
+                    visualize_patch_self_attn(image_feed_b, e1_self_b, f"{shard_save_dir}/{sample_idx}_entity1_self_attention_SHUF")
+                    visualize_patch_self_attn(image_feed_b, e2_self_b, f"{shard_save_dir}/{sample_idx}_entity2_self_attention_SHUF")
+
+                    m1b = compute_entity_metrics(e1_self_b, mask_entity1, other_gt_mask=mask_entity2, debug_tag="entity1_self_SHUF")
+                    m2b = compute_entity_metrics(e2_self_b, mask_entity2, other_gt_mask=mask_entity1, debug_tag="entity2_self_SHUF")
+
+                    for k in entity1_self_attn_metrics_all_shuf:
+                        entity1_self_attn_metrics_all_shuf[k].append(m1b[k])
+                        entity2_self_attn_metrics_all_shuf[k].append(m2b[k])
+
+                    with open(metric_path, "a") as f:
+                        f.write("\n[SHUF] Vision Self-Attention (LM vision sub-block)\n")
+                        for k, v in m1b.items():
+                            f.write(f"[SHUF] Entity1 self {k}: {v:.4f}\n")
+                        for k, v in m2b.items():
+                            f.write(f"[SHUF] Entity2 self {k}: {v:.4f}\n")
+
+        print(f"[OK] shard{shard_id} sample {sample_idx} saved under: {shard_save_dir}")
 
 # =====================
-# Mean analysis
+# Global mean analysis (ALL SHARDS)
 # =====================
-print("=== Mean Analysis over all samples ===")
-def safe_mean(x):
-    return float(np.mean(x)) if len(x) > 0 else float("nan")
+print("\n=== Mean Analysis over ALL shards ===")
+print(f"[REAL] Entity1 - COM: {safe_mean(entity1_com_dists):.4f}, IoU: {safe_mean(entity1_ious):.4f}, SoftIoU: {safe_mean(entity1_soft_ious):.4f}, WassersteinX: {safe_mean(entity1_wassersteins):.4f}")
+print(f"[REAL] Entity2 - COM: {safe_mean(entity2_com_dists):.4f}, IoU: {safe_mean(entity2_ious):.4f}, SoftIoU: {safe_mean(entity2_soft_ious):.4f}, WassersteinX: {safe_mean(entity2_wassersteins):.4f}")
+print(f"[REAL] Relation x-axis Wasserstein: {safe_mean(relation_x_wassersteins):.4f}")
 
-print(f"Entity1 - COM: {safe_mean(entity1_com_dists):.4f}, IoU: {safe_mean(entity1_ious):.4f}, SoftIoU: {safe_mean(entity1_soft_ious):.4f}, WassersteinX: {safe_mean(entity1_wassersteins):.4f}")
-print(f"Entity2 - COM: {safe_mean(entity2_com_dists):.4f}, IoU: {safe_mean(entity2_ious):.4f}, SoftIoU: {safe_mean(entity2_soft_ious):.4f}, WassersteinX: {safe_mean(entity2_wassersteins):.4f}")
-print(f"Relation x-axis Wasserstein: {safe_mean(relation_x_wassersteins):.4f}")
+if ENABLE_SHUFFLED_IMAGE_BASELINE:
+    print(f"[SHUF] Entity1 - COM: {safe_mean(entity1_com_dists_shuf):.4f}, IoU: {safe_mean(entity1_ious_shuf):.4f}, SoftIoU: {safe_mean(entity1_soft_ious_shuf):.4f}, WassersteinX: {safe_mean(entity1_wassersteins_shuf):.4f}")
+    print(f"[SHUF] Entity2 - COM: {safe_mean(entity2_com_dists_shuf):.4f}, IoU: {safe_mean(entity2_ious_shuf):.4f}, SoftIoU: {safe_mean(entity2_soft_ious_shuf):.4f}, WassersteinX: {safe_mean(entity2_wassersteins_shuf):.4f}")
+    print(f"[SHUF] Relation x-axis Wasserstein: {safe_mean(relation_x_wassersteins_shuf):.4f}")
 
-mean_path = f"{save_dir}/mean_analysis.txt"
+mean_path = os.path.join(OUT_ROOT, "mean_analysis_allshards.txt")
 with open(mean_path, "w") as f:
-    f.write("=== Mean Analysis over all samples ===\n")
-    f.write(f"Entity1 - COM: {safe_mean(entity1_com_dists):.4f}, IoU: {safe_mean(entity1_ious):.4f}, SoftIoU: {safe_mean(entity1_soft_ious):.4f}, WassersteinX: {safe_mean(entity1_wassersteins):.4f}\n")
-    f.write(f"Entity2 - COM: {safe_mean(entity2_com_dists):.4f}, IoU: {safe_mean(entity2_ious):.4f}, SoftIoU: {safe_mean(entity2_soft_ious):.4f}, WassersteinX: {safe_mean(entity2_wassersteins):.4f}\n")
-    f.write(f"Relation x-axis Wasserstein: {safe_mean(relation_x_wassersteins):.4f}\n")
+    f.write("=== Mean Analysis over ALL shards ===\n")
+    f.write(f"[REAL] Entity1 - COM: {safe_mean(entity1_com_dists):.4f}, IoU: {safe_mean(entity1_ious):.4f}, SoftIoU: {safe_mean(entity1_soft_ious):.4f}, WassersteinX: {safe_mean(entity1_wassersteins):.4f}\n")
+    f.write(f"[REAL] Entity2 - COM: {safe_mean(entity2_com_dists):.4f}, IoU: {safe_mean(entity2_ious):.4f}, SoftIoU: {safe_mean(entity2_soft_ious):.4f}, WassersteinX: {safe_mean(entity2_wassersteins):.4f}\n")
+    f.write(f"[REAL] Relation x-axis Wasserstein: {safe_mean(relation_x_wassersteins):.4f}\n")
 
-print("=== Mean Vision Self-Attention Analysis ===")
+    if ENABLE_SHUFFLED_IMAGE_BASELINE:
+        f.write("\n=== Patch-Shuffle Baseline ===\n")
+        f.write(f"[SHUF] Entity1 - COM: {safe_mean(entity1_com_dists_shuf):.4f}, IoU: {safe_mean(entity1_ious_shuf):.4f}, SoftIoU: {safe_mean(entity1_soft_ious_shuf):.4f}, WassersteinX: {safe_mean(entity1_wassersteins_shuf):.4f}\n")
+        f.write(f"[SHUF] Entity2 - COM: {safe_mean(entity2_com_dists_shuf):.4f}, IoU: {safe_mean(entity2_ious_shuf):.4f}, SoftIoU: {safe_mean(entity2_soft_ious_shuf):.4f}, WassersteinX: {safe_mean(entity2_wassersteins_shuf):.4f}\n")
+        f.write(f"[SHUF] Relation x-axis Wasserstein: {safe_mean(relation_x_wassersteins_shuf):.4f}\n")
+
+print("\n=== Mean Vision Self-Attention Analysis (ALL SHARDS) ===")
 with open(mean_path, "a") as f:
-    f.write("=== Mean Vision Self-Attention Analysis ===\n")
+    f.write("\n=== Mean Vision Self-Attention Analysis (ALL SHARDS) ===\n")
+
+    # REAL
+    f.write("\n[REAL] Vision Self-Attention\n")
     for k in entity1_self_attn_metrics_all:
         e1_mean = safe_mean(entity1_self_attn_metrics_all[k])
         e2_mean = safe_mean(entity2_self_attn_metrics_all[k])
-        print(f"{k}: Entity1={e1_mean:.4f}, Entity2={e2_mean:.4f}")
-        f.write(f"{k}: Entity1={e1_mean:.4f}, Entity2={e2_mean:.4f}\n")
+        print(f"[REAL] {k}: Entity1={e1_mean:.4f}, Entity2={e2_mean:.4f}")
+        f.write(f"[REAL] {k}: Entity1={e1_mean:.4f}, Entity2={e2_mean:.4f}\n")
     if len(bg_dispersons) > 0:
-        bg_disperson_mean = safe_mean(bg_dispersons)
-        print(f"Background disperson mean: {bg_disperson_mean:.4f}")
-        f.write(f"Background disperson mean: {bg_disperson_mean:.4f}\n")
+        bg_mean = safe_mean(bg_dispersons)
+        print(f"[REAL] Background disperson mean: {bg_mean:.4f}")
+        f.write(f"[REAL] Background disperson mean: {bg_mean:.4f}\n")
+
+    # SHUF
+    if ENABLE_SHUFFLED_IMAGE_BASELINE:
+        f.write("\n[SHUF] Vision Self-Attention\n")
+        for k in entity1_self_attn_metrics_all_shuf:
+            e1_mean_b = safe_mean(entity1_self_attn_metrics_all_shuf[k])
+            e2_mean_b = safe_mean(entity2_self_attn_metrics_all_shuf[k])
+            print(f"[SHUF] {k}: Entity1={e1_mean_b:.4f}, Entity2={e2_mean_b:.4f}")
+            f.write(f"[SHUF] {k}: Entity1={e1_mean_b:.4f}, Entity2={e2_mean_b:.4f}\n")
+        if len(bg_dispersons_shuf) > 0:
+            bg_mean_b = safe_mean(bg_dispersons_shuf)
+            print(f"[SHUF] Background disperson mean: {bg_mean_b:.4f}")
+            f.write(f"[SHUF] Background disperson mean: {bg_mean_b:.4f}\n")
+
+print(f"\n[OK] mean analysis saved to: {mean_path}")

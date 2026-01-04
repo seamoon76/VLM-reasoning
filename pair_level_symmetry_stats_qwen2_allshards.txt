@@ -1,0 +1,12 @@
+=== Pair-level symmetry statistics (Qwen2, ALL SHARDS) ===
+shards=[0, 1, 2, 3, 4]
+total_lines=500
+total_pairs_after_cf=500
+cf_fail=0
+kept_pairs=252
+skipped_pairs=248
+
+asym_s1_mean=-0.002924
+asym_s2_mean=-0.002566
+symmetry_score_mean=-0.005490
+abs_symmetry_score_mean=0.005490
