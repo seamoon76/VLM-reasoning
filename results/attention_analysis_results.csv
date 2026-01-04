@@ -1,0 +1,251 @@
+sample_idx,caption,relation,relation_token_entropy,relation_token_dispersion,entity1_token_entropy,entity1_token_dispersion,entity2_token_entropy,entity2_token_dispersion,entity1_self_attn_entropy,entity1_self_attn_dispersion,entity2_self_attn_entropy,entity2_self_attn_dispersion,caption_type,original_caption
+1,a pentagon is to the right of an ellipse .,right,6.29296875,98.375,6.3359375,95.0,6.28515625,98.3125,4.875,69.5,4.6875,65.5,complex,
+3,a red triangle is to the left of a blue semicircle .,left,6.296875,97.875,6.34765625,92.3125,6.34765625,92.375,4.75,58.75,4.78125,74.0,complex,
+4,a triangle is to the right of an ellipse .,right,6.27734375,96.875,6.33203125,91.75,6.33203125,97.8125,4.65625,66.0,5.0625,92.5,complex,
+9,a cross is to the right of a semicircle .,right,6.32421875,94.8125,6.3359375,95.375,6.33984375,92.5625,4.78125,83.0,4.6875,77.0,complex,
+10,a cross is to the right of a rectangle .,right,6.24609375,98.625,6.34765625,93.5625,6.29296875,96.3125,4.71875,57.5,4.78125,58.0,complex,
+11,a blue circle is to the right of a semicircle .,right,6.32421875,93.25,6.328125,95.6875,6.3359375,96.9375,5.0,85.0,4.59375,93.5,complex,
+25,a blue semicircle is to the right of a yellow cross .,right,6.31640625,94.875,6.3359375,97.5,6.34765625,94.5,4.84375,70.0,4.875,81.5,complex,
+26,a gray cross is to the right of a green semicircle .,right,6.328125,94.1875,6.34375,91.6875,6.33984375,93.0,4.625,82.0,4.78125,87.5,complex,
+27,a magenta shape is to the left of a green shape .,left,6.328125,95.25,6.34375,96.5,6.34375,96.5,4.71875,60.25,4.8125,58.0,complex,
+29,a blue ellipse is to the right of a yellow square .,right,6.2890625,94.625,6.3515625,93.8125,6.25,100.8125,4.75,100.5,4.53125,83.5,complex,
+31,a gray shape is to the left of a magenta semicircle .,left,6.29296875,97.5625,6.30078125,99.6875,6.30078125,102.9375,4.6875,76.5,4.90625,61.0,complex,
+33,a gray shape is to the right of a yellow shape .,right,6.3125,99.125,6.34765625,92.75,6.33203125,97.3125,4.6875,59.75,4.78125,65.5,complex,
+37,a red semicircle is to the left of a magenta shape .,left,6.2890625,95.8125,6.32421875,101.0625,6.34375,91.4375,4.9375,88.0,4.8125,67.5,complex,
+38,a gray shape is to the left of a square .,left,6.30078125,99.25,6.29296875,99.5625,6.32421875,97.3125,5.0,60.25,4.875,59.75,complex,
+40,a red semicircle is to the left of a red shape .,left,6.3125,95.125,6.34375,95.1875,6.34765625,98.75,5.125,82.0,4.90625,81.5,complex,
+49,a magenta pentagon is to the left of a magenta circle .,left,6.3125,97.6875,6.3515625,92.6875,6.30078125,102.9375,4.6875,80.5,4.78125,88.5,complex,
+50,a pentagon is to the right of a magenta circle .,right,6.31640625,99.4375,6.33984375,93.0,6.27734375,101.875,4.71875,56.25,4.71875,57.0,complex,
+52,a green cross is to the left of a magenta circle .,left,6.33203125,96.0625,6.33984375,93.375,6.31640625,98.75,4.71875,65.5,4.6875,66.0,complex,
+70,a circle is to the left of a cyan shape .,left,6.33203125,98.0625,6.328125,96.875,6.3515625,96.25,4.84375,84.0,4.875,85.5,complex,
+79,a blue shape is to the left of a square .,left,6.31640625,94.625,6.28515625,100.6875,6.3203125,98.25,5.03125,67.5,4.71875,70.0,complex,
+82,a cross is to the right of a blue shape .,right,6.29296875,94.5,6.34765625,96.125,6.33203125,94.125,4.84375,93.5,4.5625,68.0,complex,
+88,a magenta shape is to the left of a cyan shape .,left,6.32421875,92.25,6.34375,97.375,6.34375,97.375,4.8125,72.5,4.78125,93.5,complex,
+91,a yellow square is to the right of a blue ellipse .,right,6.328125,94.4375,6.328125,89.4375,6.34765625,96.875,5.25,61.5,5.21875,75.5,complex,
+98,a cyan shape is to the left of an ellipse .,left,6.31640625,97.25,6.328125,99.1875,6.33984375,98.875,4.71875,67.0,4.8125,84.0,complex,
+99,a magenta square is to the left of a magenta circle .,left,6.3203125,93.6875,6.3359375,91.75,6.3359375,92.1875,4.875,83.0,4.96875,79.0,complex,
+1,a square is to the left of a pentagon .,left,6.23828125,95.25,6.3203125,98.5625,6.33203125,97.375,4.875,59.0,4.84375,75.0,complex,
+7,a semicircle is to the left of a red shape .,left,6.33984375,95.5625,6.34765625,96.4375,6.3515625,93.5,4.78125,56.75,4.78125,66.5,complex,
+9,a blue triangle is to the right of a green triangle .,right,6.3203125,97.625,6.33984375,94.5625,6.33984375,94.5625,4.75,60.0,4.875,62.25,complex,
+10,a magenta shape is to the right of a gray rectangle .,right,6.3125,96.25,6.33984375,96.5,6.328125,98.3125,4.625,59.25,5.0,77.0,complex,
+18,a cyan triangle is to the left of a cyan shape .,left,6.32421875,91.9375,6.3515625,96.3125,6.33984375,96.0625,4.8125,75.0,4.96875,69.0,complex,
+20,a yellow triangle is to the right of a green circle .,right,6.3359375,95.875,6.328125,91.75,6.32421875,96.375,4.75,84.5,4.75,82.0,complex,
+26,a red rectangle is to the left of a rectangle .,left,6.328125,97.5625,6.34375,95.4375,6.34375,95.4375,4.6875,71.5,4.78125,69.5,complex,
+27,a gray semicircle is to the right of a magenta shape .,right,6.32421875,90.75,6.328125,98.375,6.3515625,97.75,4.84375,102.0,4.59375,100.5,complex,
+34,a red square is to the left of a cyan square .,left,6.30859375,98.875,6.3125,97.1875,6.3125,97.1875,4.65625,55.75,4.65625,50.5,complex,
+40,a gray pentagon is to the left of a blue ellipse .,left,6.296875,97.9375,6.34375,91.75,6.27734375,101.8125,5.0625,71.5,4.84375,82.0,complex,
+43,a green circle is to the right of a red shape .,right,6.34375,96.1875,6.34375,96.1875,6.3515625,95.8125,4.78125,103.5,4.8125,90.5,complex,
+44,a yellow triangle is to the left of a square .,left,6.32421875,97.625,6.33203125,92.4375,6.3203125,97.875,5.15625,80.0,4.84375,65.5,complex,
+45,a semicircle is to the left of a blue square .,left,6.33984375,93.9375,6.33984375,90.1875,6.33984375,92.4375,4.8125,62.5,4.9375,66.0,complex,
+46,a green rectangle is to the left of a cross .,left,6.28125,98.375,6.2734375,98.4375,6.33984375,95.4375,4.96875,63.5,4.65625,54.25,complex,
+47,a green shape is to the left of a yellow shape .,left,6.328125,92.5,6.34765625,96.875,6.34765625,96.875,4.71875,75.0,4.9375,86.0,complex,
+58,a cyan rectangle is to the left of a magenta square .,left,6.32421875,95.0,6.33203125,93.125,6.3359375,93.0,4.71875,77.5,4.75,69.0,complex,
+59,a green shape is to the left of an ellipse .,left,6.30078125,99.4375,6.29296875,99.9375,6.328125,98.4375,4.71875,57.75,4.65625,63.75,complex,
+63,a green shape is to the left of a cyan ellipse .,left,6.32421875,93.75,6.34765625,97.5625,6.3359375,91.5625,4.71875,71.0,5.0,84.0,complex,
+65,a gray triangle is to the right of an ellipse .,right,6.27734375,98.6875,6.265625,98.4375,6.33984375,91.9375,4.53125,48.75,4.75,54.5,complex,
+70,a blue circle is to the left of a blue pentagon .,left,6.3359375,94.0625,6.33203125,95.875,6.328125,93.8125,4.875,82.0,5.09375,90.5,complex,
+73,a blue square is to the left of a magenta circle .,left,6.3125,97.8125,6.33203125,95.0625,6.28515625,102.125,4.75,73.5,4.875,74.5,complex,
+74,a magenta shape is to the left of a red shape .,left,6.32421875,96.9375,6.3359375,98.125,6.34765625,97.5,4.71875,67.0,4.6875,66.0,complex,
+75,a cyan ellipse is to the left of a cyan shape .,left,6.33203125,94.875,6.35546875,96.875,6.33984375,96.0,4.8125,89.0,4.90625,90.0,complex,
+78,a green cross is to the right of a green shape .,right,6.30859375,96.875,6.33203125,95.125,6.33984375,97.875,4.75,90.0,4.78125,75.5,complex,
+83,a magenta shape is to the right of a cyan shape .,right,6.3203125,95.5625,6.34375,98.25,6.34375,98.25,4.5,53.25,4.53125,51.75,complex,
+86,a pentagon is to the left of a magenta shape .,left,6.32421875,95.5,6.3359375,91.25,6.34765625,96.1875,4.875,100.0,4.84375,96.5,complex,
+89,a triangle is to the left of a magenta square .,left,6.296875,96.25,6.328125,90.75,6.30859375,95.6875,5.03125,76.5,5.21875,84.5,complex,
+91,a green shape is to the left of a yellow ellipse .,left,6.3203125,96.125,6.34375,98.5,6.32421875,98.9375,4.75,76.0,5.125,89.0,complex,
+93,a gray ellipse is to the right of a cyan circle .,right,6.3203125,93.0,6.32421875,89.375,6.34375,93.0625,4.6875,78.5,4.78125,76.0,complex,
+96,a blue semicircle is to the right of a blue circle .,right,6.28515625,97.25,6.3515625,92.9375,6.2734375,102.8125,5.15625,79.5,4.84375,67.0,complex,
+97,a cyan ellipse is to the right of a red shape .,right,6.33984375,93.4375,6.34375,94.8125,6.3515625,96.125,4.78125,61.75,5.28125,80.0,complex,
+0,a triangle is to the left of a blue shape .,left,6.32421875,94.0,6.33203125,95.5,6.34765625,95.4375,4.71875,56.75,5.125,82.5,complex,
+4,a blue cross is to the right of a green circle .,right,6.3203125,97.4375,6.3359375,93.875,6.30859375,98.0,4.875,79.5,4.78125,62.5,complex,
+9,a blue cross is to the right of a green semicircle .,right,6.328125,95.0625,6.34765625,92.0,6.3515625,93.25,4.5625,66.5,4.65625,72.0,complex,
+16,a gray pentagon is to the left of a yellow shape .,left,6.31640625,95.875,6.3359375,94.125,6.34375,97.125,4.96875,91.5,4.59375,80.5,complex,
+19,a gray circle is to the right of a circle .,right,6.31640625,95.875,6.328125,93.5625,6.328125,93.5625,4.9375,69.0,4.84375,82.0,complex,
+33,a yellow shape is to the right of a triangle .,right,6.32421875,97.9375,6.31640625,98.3125,6.31640625,98.3125,4.65625,53.5,4.875,55.0,complex,
+35,a circle is to the left of a yellow cross .,left,6.30859375,94.5,6.3359375,94.125,6.3203125,97.875,4.8125,58.75,4.5625,63.75,complex,
+36,a blue shape is to the left of a cyan circle .,left,6.31640625,96.4375,6.3515625,94.4375,6.32421875,99.875,4.875,65.0,4.71875,58.0,complex,
+38,a red cross is to the right of a blue pentagon .,right,6.33203125,96.0625,6.328125,98.125,6.328125,97.125,4.6875,66.0,4.78125,71.5,complex,
+39,a red triangle is to the right of a yellow pentagon .,right,6.3125,99.625,6.3359375,93.6875,6.3046875,101.0,4.84375,58.5,4.78125,64.5,complex,
+43,a yellow pentagon is to the left of a green shape .,left,6.31640625,93.1875,6.34765625,97.3125,6.34765625,97.3125,4.65625,88.5,4.65625,83.0,complex,
+52,a gray semicircle is to the left of a yellow triangle .,left,6.3046875,94.5625,6.34375,91.3125,6.30859375,99.125,4.84375,68.5,4.6875,83.0,complex,
+63,a pentagon is to the right of a cyan semicircle .,right,6.31640625,92.9375,6.3359375,89.25,6.27734375,102.1875,4.75,66.0,4.78125,74.5,complex,
+75,a yellow triangle is to the right of a green shape .,right,6.32421875,98.375,6.34765625,92.9375,6.3359375,95.0,4.875,63.75,4.78125,65.0,complex,
+76,a green shape is to the right of a red triangle .,right,6.33984375,92.75,6.3125,96.125,6.34765625,96.375,5.0,87.0,4.8125,100.5,complex,
+82,a green ellipse is to the left of a yellow ellipse .,left,6.31640625,94.0,6.34375,91.3125,6.34375,91.3125,4.78125,92.5,5.125,103.5,complex,
+84,a green shape is to the right of a blue shape .,right,6.28515625,97.0625,6.3515625,93.9375,6.3515625,93.9375,4.65625,65.5,4.625,75.5,complex,
+85,a cyan shape is to the left of a magenta rectangle .,left,6.3125,95.5625,6.34375,91.9375,6.34375,91.9375,4.8125,79.5,4.9375,73.5,complex,
+88,a red rectangle is to the left of a blue pentagon .,left,6.33984375,95.5,6.34375,97.125,6.328125,90.25,4.75,92.5,5.3125,112.0,complex,
+4,a gray shape is to the left of an ellipse .,left,6.28125,98.25,6.26171875,98.25,6.30859375,99.5,4.65625,66.0,4.84375,59.5,complex,
+8,an ellipse is to the left of a blue rectangle .,left,6.328125,94.4375,6.33203125,94.375,6.30078125,96.3125,5.28125,99.0,4.71875,92.0,complex,
+28,a square is to the left of a blue cross .,left,6.3203125,94.875,6.3203125,97.0625,6.33203125,96.4375,4.8125,73.5,4.875,61.5,complex,
+33,a cyan circle is to the left of a yellow ellipse .,left,6.31640625,96.3125,6.33203125,89.125,6.34765625,93.3125,4.84375,98.0,4.84375,78.0,complex,
+34,a blue rectangle is to the right of a green rectangle .,right,6.31640625,97.75,6.3359375,91.3125,6.3359375,91.3125,4.75,55.0,4.65625,60.0,complex,
+35,a red triangle is to the right of a cyan shape .,right,6.3203125,96.6875,6.3359375,98.125,6.33984375,92.4375,4.6875,54.0,4.78125,68.0,complex,
+41,a pentagon is to the left of a red shape .,left,6.3203125,95.6875,6.33203125,98.375,6.3359375,91.4375,4.90625,75.5,4.6875,72.0,complex,
+44,a cross is to the right of an ellipse .,right,6.28515625,99.25,6.328125,95.6875,6.34765625,94.125,4.75,83.5,4.6875,71.5,complex,
+51,a gray shape is to the right of a circle .,right,6.3203125,94.9375,6.31640625,95.1875,6.31640625,95.1875,5.21875,77.5,4.875,67.5,complex,
+52,a magenta shape is to the left of a yellow rectangle .,left,6.32421875,95.4375,6.328125,98.125,6.34765625,96.125,4.78125,80.5,4.875,66.5,complex,
+53,a gray square is to the left of a blue shape .,left,6.3203125,95.625,6.33203125,95.3125,6.328125,98.6875,4.84375,76.5,5.03125,83.0,complex,
+55,a magenta shape is to the left of a triangle .,left,6.3203125,95.6875,6.34765625,96.1875,6.31640625,95.9375,4.71875,76.0,4.71875,84.5,complex,
+59,a triangle is to the left of a cyan ellipse .,left,6.30859375,95.5,6.328125,92.1875,6.33984375,97.625,4.8125,75.0,4.71875,64.0,complex,
+60,a gray triangle is to the left of a pentagon .,left,6.34375,93.625,6.328125,91.25,6.3203125,96.9375,4.8125,63.25,4.53125,57.75,complex,
+62,a blue triangle is to the left of a blue pentagon .,left,6.30859375,97.125,6.296875,98.6875,6.30859375,98.1875,4.84375,89.0,4.875,88.0,complex,
+63,a gray ellipse is to the left of a green shape .,left,6.296875,98.3125,6.3125,99.6875,6.34375,92.5625,4.8125,73.0,4.84375,62.25,complex,
+65,a cyan triangle is to the left of a yellow shape .,left,6.32421875,92.625,6.34375,96.875,6.34765625,96.4375,4.5625,71.0,4.65625,77.0,complex,
+74,a gray shape is to the left of a green rectangle .,left,6.33984375,93.4375,6.30078125,95.3125,6.34765625,95.5625,4.75,83.0,4.90625,90.0,complex,
+77,a green semicircle is to the left of a blue circle .,left,6.31640625,91.6875,6.31640625,96.3125,6.34375,96.3125,5.0625,64.5,4.78125,62.75,complex,
+82,a magenta shape is to the left of a gray shape .,left,6.3046875,97.4375,6.32421875,99.875,6.328125,99.5625,4.625,74.0,4.8125,83.0,complex,
+83,a red rectangle is to the right of a gray ellipse .,right,6.3046875,99.625,6.3046875,101.9375,6.32421875,94.6875,4.90625,68.0,4.71875,56.0,complex,
+84,a red cross is to the left of a cyan ellipse .,left,6.3125,97.6875,6.33984375,93.0625,6.33984375,91.0625,4.625,61.0,4.65625,62.5,complex,
+86,a cross is to the right of a magenta shape .,right,6.3046875,98.1875,6.328125,94.5625,6.32421875,99.5625,4.90625,85.0,4.71875,84.5,complex,
+89,a pentagon is to the right of a blue shape .,right,6.328125,90.6875,6.34375,96.3125,6.33984375,95.0625,4.59375,59.25,4.6875,63.75,complex,
+94,a gray pentagon is to the right of a blue shape .,right,6.3125,95.9375,6.33984375,98.375,6.328125,96.4375,4.6875,81.5,4.9375,103.5,complex,
+95,a yellow ellipse is to the right of a cyan shape .,right,6.30859375,95.125,6.3359375,90.6875,6.33984375,99.125,4.71875,79.0,4.78125,73.0,complex,
+8,a gray cross is to the right of a yellow rectangle .,right,6.33203125,94.8125,6.33984375,95.0,6.30078125,96.0,4.75,85.5,4.59375,86.0,complex,
+11,a cyan ellipse is to the left of a pentagon .,left,6.3203125,94.9375,6.34375,92.1875,6.34375,92.1875,4.96875,67.0,4.78125,75.5,complex,
+13,a rectangle is to the left of a green shape .,left,6.20703125,100.5,6.3046875,99.875,6.3515625,93.375,4.59375,53.5,4.75,57.5,complex,
+14,a blue triangle is to the left of a magenta rectangle .,left,6.3203125,92.9375,6.328125,98.25,6.32421875,93.1875,4.96875,100.0,4.71875,99.5,complex,
+15,a yellow cross is to the right of a gray shape .,right,6.3359375,94.9375,6.3515625,96.0,6.34765625,94.5,5.03125,94.5,4.90625,84.5,complex,
+18,a triangle is to the right of a square .,right,6.28515625,96.125,6.32421875,99.4375,6.33984375,94.9375,4.5625,79.5,4.9375,110.5,complex,
+19,a blue ellipse is to the left of a green semicircle .,left,6.3203125,89.9375,6.33203125,88.8125,6.33984375,97.625,4.6875,72.5,4.9375,97.0,complex,
+20,a cyan triangle is to the right of a red square .,right,6.328125,94.5,6.32421875,91.8125,6.33203125,96.3125,4.75,63.25,5.125,62.75,complex,
+21,a blue circle is to the left of a pentagon .,left,6.3203125,95.25,6.328125,91.25,6.31640625,95.4375,4.625,72.5,4.75,65.0,complex,
+24,a red circle is to the right of a cyan shape .,right,6.3203125,95.0,6.328125,91.0,6.328125,91.0,4.75,58.0,5.1875,63.5,complex,
+34,a cross is to the right of a green rectangle .,right,6.32421875,95.375,6.328125,92.1875,6.3125,96.25,4.8125,79.0,4.75,74.5,complex,
+50,a green shape is to the right of a blue shape .,right,6.29296875,97.25,6.31640625,99.9375,6.31640625,99.9375,4.59375,74.5,4.84375,64.5,complex,
+60,a gray square is to the right of a triangle .,right,6.32421875,96.0625,6.3203125,96.25,6.33984375,94.5625,4.78125,57.0,5.03125,71.0,complex,
+62,a pentagon is to the left of a gray ellipse .,left,6.3046875,95.125,6.2734375,101.0625,6.34375,91.625,4.875,79.0,4.53125,65.5,complex,
+68,a yellow triangle is to the left of a circle .,left,6.34375,95.875,6.3359375,92.5,6.3203125,98.5,4.90625,63.75,4.8125,56.75,complex,
+72,a circle is to the left of a magenta shape .,left,6.30859375,96.0625,6.3515625,95.5,6.34375,93.75,4.75,74.5,4.78125,80.0,complex,
+73,a pentagon is to the right of a cyan ellipse .,right,6.32421875,95.375,6.33984375,94.5,6.3359375,97.25,4.84375,75.0,4.875,91.0,complex,
+77,a square is to the left of a pentagon .,left,6.30078125,95.4375,6.328125,94.5,6.33203125,96.375,4.75,90.0,4.71875,98.5,complex,
+82,a cross is to the right of a red ellipse .,right,6.19921875,99.125,6.265625,99.125,6.34765625,93.1875,4.9375,58.5,4.6875,72.0,complex,
+83,a rectangle is to the left of a magenta square .,left,6.30859375,94.125,6.34375,93.8125,6.3125,96.6875,4.78125,77.5,4.71875,84.5,complex,
+84,a red square is to the right of a green triangle .,right,6.31640625,99.1875,6.33984375,92.9375,6.31640625,99.1875,4.78125,69.0,4.96875,67.0,complex,
+88,a magenta triangle is to the right of a blue cross .,right,6.265625,99.0625,6.1953125,99.6875,6.31640625,95.875,4.5625,56.75,4.75,57.25,complex,
+89,a green square is to the right of a yellow semicircle .,right,6.31640625,94.375,6.34765625,94.625,6.33203125,90.4375,4.90625,80.5,4.875,61.75,complex,
+94,a cyan rectangle is to the left of a square .,left,6.30859375,99.1875,6.3203125,97.5,6.30078125,98.9375,4.78125,81.0,4.96875,81.5,complex,
+1,a pentagon is adjacent to an ellipse .,adjacent,6.28515625,97.1875,6.33203125,95.9375,6.28125,98.375,4.875,69.5,4.6875,65.5,adjacent,a pentagon is to the right of an ellipse .
+3,a red triangle is adjacent to a blue semicircle .,adjacent,6.2890625,99.375,6.34765625,92.6875,6.30859375,99.0625,4.75,58.75,4.78125,74.0,adjacent,a red triangle is to the left of a blue semicircle .
+4,a triangle is adjacent to an ellipse .,adjacent,6.3359375,96.5,6.33203125,92.8125,6.32421875,98.0,4.65625,66.0,5.0625,92.5,adjacent,a triangle is to the right of an ellipse .
+9,a cross is adjacent to a semicircle .,adjacent,6.33203125,96.0,6.3359375,96.4375,6.33984375,93.375,4.78125,83.0,4.6875,77.0,adjacent,a cross is to the right of a semicircle .
+10,a cross is adjacent to a rectangle .,adjacent,6.34765625,93.875,6.34765625,93.875,6.29296875,99.625,4.71875,57.5,4.78125,58.0,adjacent,a cross is to the right of a rectangle .
+11,a blue circle is adjacent to a semicircle .,adjacent,6.32421875,98.6875,6.328125,95.5625,6.3359375,96.5625,5.0,85.0,4.59375,93.5,adjacent,a blue circle is to the right of a semicircle .
+25,a blue semicircle is adjacent to a yellow cross .,adjacent,6.3203125,96.375,6.31640625,101.4375,6.34765625,94.375,4.84375,70.0,4.875,81.5,adjacent,a blue semicircle is to the right of a yellow cross .
+26,a gray cross is adjacent to a green semicircle .,adjacent,6.328125,97.1875,6.33203125,96.8125,6.33984375,93.75,4.625,82.0,4.78125,87.5,adjacent,a gray cross is to the right of a green semicircle .
+27,a magenta shape is adjacent to a green shape .,adjacent,6.31640625,96.0,6.34375,95.875,6.34375,95.875,4.71875,60.25,4.8125,58.0,adjacent,a magenta shape is to the left of a green shape .
+29,a blue ellipse is adjacent to a yellow square .,adjacent,6.20703125,97.625,6.3515625,94.6875,6.28125,94.875,4.75,100.5,4.53125,83.5,adjacent,a blue ellipse is to the right of a yellow square .
+31,a gray shape is adjacent to a magenta semicircle .,adjacent,6.30078125,98.75,6.3203125,96.8125,6.32421875,98.875,4.6875,76.5,4.90625,61.0,adjacent,a gray shape is to the left of a magenta semicircle .
+33,a gray shape is adjacent to a yellow shape .,adjacent,6.3046875,97.8125,6.33984375,97.4375,6.33203125,97.0625,4.6875,59.75,4.78125,65.5,adjacent,a gray shape is to the right of a yellow shape .
+37,a red semicircle is adjacent to a magenta shape .,adjacent,6.2890625,97.0,6.3125,100.0625,6.34375,92.0,4.9375,88.0,4.8125,67.5,adjacent,a red semicircle is to the left of a magenta shape .
+38,a gray shape is adjacent to a square .,adjacent,6.27734375,98.1875,6.29296875,99.6875,6.32421875,97.3125,5.0,60.25,4.875,59.75,adjacent,a gray shape is to the left of a square .
+40,a red semicircle is adjacent to a red shape .,adjacent,6.31640625,96.0625,6.34765625,93.875,6.35546875,96.375,5.125,82.0,4.90625,81.5,adjacent,a red semicircle is to the left of a red shape .
+49,a magenta pentagon is adjacent to a magenta circle .,adjacent,6.3359375,93.625,6.33984375,92.0625,6.30859375,99.9375,4.6875,80.5,4.78125,88.5,adjacent,a magenta pentagon is to the left of a magenta circle .
+50,a pentagon is adjacent to a magenta circle .,adjacent,6.30078125,97.9375,6.33984375,94.0625,6.30859375,100.0625,4.71875,56.25,4.71875,57.0,adjacent,a pentagon is to the right of a magenta circle .
+52,a green cross is adjacent to a magenta circle .,adjacent,6.33984375,94.5,6.33984375,94.125,6.32421875,97.9375,4.71875,65.5,4.6875,66.0,adjacent,a green cross is to the left of a magenta circle .
+70,a circle is adjacent to a cyan shape .,adjacent,6.3125,96.75,6.328125,97.75,6.34765625,97.9375,4.84375,84.0,4.875,85.5,adjacent,a circle is to the left of a cyan shape .
+79,a blue shape is adjacent to a square .,adjacent,6.29296875,98.8125,6.2890625,101.3125,6.31640625,97.5625,5.03125,67.5,4.71875,70.0,adjacent,a blue shape is to the left of a square .
+82,a cross is adjacent to a blue shape .,adjacent,6.33984375,97.0625,6.34765625,95.8125,6.33203125,95.375,4.84375,93.5,4.5625,68.0,adjacent,a cross is to the right of a blue shape .
+88,a magenta shape is adjacent to a cyan shape .,adjacent,6.296875,93.9375,6.34765625,96.6875,6.34765625,96.6875,4.8125,72.5,4.78125,93.5,adjacent,a magenta shape is to the left of a cyan shape .
+91,a yellow square is adjacent to a blue ellipse .,adjacent,6.34375,94.1875,6.328125,91.125,6.33203125,95.5625,5.25,61.5,5.21875,75.5,adjacent,a yellow square is to the right of a blue ellipse .
+98,a cyan shape is adjacent to an ellipse .,adjacent,6.3046875,97.1875,6.32421875,98.0,6.3359375,98.125,4.71875,67.0,4.8125,84.0,adjacent,a cyan shape is to the left of an ellipse .
+99,a magenta square is adjacent to a magenta circle .,adjacent,6.31640625,93.375,6.33203125,93.625,6.3125,96.0625,4.875,83.0,4.96875,79.0,adjacent,a magenta square is to the left of a magenta circle .
+1,a square is adjacent to a pentagon .,adjacent,6.33984375,95.5625,6.3203125,99.125,6.31640625,99.75,4.875,59.0,4.84375,75.0,adjacent,a square is to the left of a pentagon .
+7,a semicircle is adjacent to a red shape .,adjacent,6.31640625,98.1875,6.3515625,93.3125,6.34765625,93.6875,4.78125,56.75,4.78125,66.5,adjacent,a semicircle is to the left of a red shape .
+9,a blue triangle is adjacent to a green triangle .,adjacent,6.31640625,96.375,6.33984375,94.875,6.33984375,94.875,4.75,60.0,4.875,62.25,adjacent,a blue triangle is to the right of a green triangle .
+10,a magenta shape is adjacent to a gray rectangle .,adjacent,6.31640625,93.9375,6.3515625,95.0625,6.3125,97.8125,4.625,59.25,5.0,77.0,adjacent,a magenta shape is to the right of a gray rectangle .
+18,a cyan triangle is adjacent to a cyan shape .,adjacent,6.31640625,95.5,6.3515625,95.25,6.33984375,96.1875,4.8125,75.0,4.96875,69.0,adjacent,a cyan triangle is to the left of a cyan shape .
+20,a yellow triangle is adjacent to a green circle .,adjacent,6.33984375,97.1875,6.33203125,93.6875,6.328125,98.6875,4.75,84.5,4.75,82.0,adjacent,a yellow triangle is to the right of a green circle .
+26,a red rectangle is adjacent to a rectangle .,adjacent,6.328125,96.5625,6.34375,96.1875,6.34375,96.1875,4.6875,71.5,4.78125,69.5,adjacent,a red rectangle is to the left of a rectangle .
+27,a gray semicircle is adjacent to a magenta shape .,adjacent,6.32421875,93.25,6.33203125,96.875,6.34765625,98.25,4.84375,102.0,4.59375,100.5,adjacent,a gray semicircle is to the right of a magenta shape .
+34,a red square is adjacent to a cyan square .,adjacent,6.29296875,98.25,6.3203125,96.75,6.3203125,96.75,4.65625,55.75,4.65625,50.5,adjacent,a red square is to the left of a cyan square .
+40,a gray pentagon is adjacent to a blue ellipse .,adjacent,6.234375,100.5625,6.34375,92.5,6.30078125,97.0,5.0625,71.5,4.84375,82.0,adjacent,a gray pentagon is to the left of a blue ellipse .
+43,a green circle is adjacent to a red shape .,adjacent,6.3515625,96.4375,6.34375,95.9375,6.3515625,95.875,4.78125,103.5,4.8125,90.5,adjacent,a green circle is to the right of a red shape .
+44,a yellow triangle is adjacent to a square .,adjacent,6.33203125,95.9375,6.3359375,94.3125,6.32421875,98.3125,5.15625,80.0,4.84375,65.5,adjacent,a yellow triangle is to the left of a square .
+45,a semicircle is adjacent to a blue square .,adjacent,6.3203125,98.6875,6.33984375,91.0625,6.31640625,99.25,4.8125,62.5,4.9375,66.0,adjacent,a semicircle is to the left of a blue square .
+46,a green rectangle is adjacent to a cross .,adjacent,6.24609375,97.3125,6.2734375,98.8125,6.33984375,96.1875,4.96875,63.5,4.65625,54.25,adjacent,a green rectangle is to the left of a cross .
+47,a green shape is adjacent to a yellow shape .,adjacent,6.3203125,97.3125,6.34765625,96.8125,6.34765625,96.8125,4.71875,75.0,4.9375,86.0,adjacent,a green shape is to the left of a yellow shape .
+58,a cyan rectangle is adjacent to a magenta square .,adjacent,6.29296875,94.8125,6.3125,96.6875,6.3359375,94.6875,4.71875,77.5,4.75,69.0,adjacent,a cyan rectangle is to the left of a magenta square .
+59,a green shape is adjacent to an ellipse .,adjacent,6.29296875,97.875,6.30859375,97.3125,6.32421875,98.8125,4.71875,57.75,4.65625,63.75,adjacent,a green shape is to the left of an ellipse .
+63,a green shape is adjacent to a cyan ellipse .,adjacent,6.33203125,95.75,6.3515625,94.6875,6.3203125,95.0625,4.71875,71.0,5.0,84.0,adjacent,a green shape is to the left of a cyan ellipse .
+65,a gray triangle is adjacent to an ellipse .,adjacent,6.2578125,96.625,6.25390625,99.125,6.34375,92.8125,4.53125,48.75,4.75,54.5,adjacent,a gray triangle is to the right of an ellipse .
+70,a blue circle is adjacent to a blue pentagon .,adjacent,6.34375,96.6875,6.33203125,94.8125,6.33203125,95.1875,4.875,82.0,5.09375,90.5,adjacent,a blue circle is to the left of a blue pentagon .
+73,a blue square is adjacent to a magenta circle .,adjacent,6.3046875,98.6875,6.33203125,95.75,6.3046875,99.125,4.75,73.5,4.875,74.5,adjacent,a blue square is to the left of a magenta circle .
+74,a magenta shape is adjacent to a red shape .,adjacent,6.30078125,96.4375,6.34765625,93.0,6.3515625,97.25,4.71875,67.0,4.6875,66.0,adjacent,a magenta shape is to the left of a red shape .
+75,a cyan ellipse is adjacent to a cyan shape .,adjacent,6.32421875,93.625,6.3515625,96.6875,6.33984375,95.9375,4.8125,89.0,4.90625,90.0,adjacent,a cyan ellipse is to the left of a cyan shape .
+78,a green cross is adjacent to a green shape .,adjacent,6.3125,96.0625,6.3359375,96.0625,6.3359375,97.0,4.75,90.0,4.78125,75.5,adjacent,a green cross is to the right of a green shape .
+83,a magenta shape is adjacent to a cyan shape .,adjacent,6.2734375,96.9375,6.34375,97.6875,6.34375,97.6875,4.5,53.25,4.53125,51.75,adjacent,a magenta shape is to the right of a cyan shape .
+86,a pentagon is adjacent to a magenta shape .,adjacent,6.33984375,95.875,6.3359375,92.125,6.34765625,95.875,4.875,100.0,4.84375,96.5,adjacent,a pentagon is to the left of a magenta shape .
+89,a triangle is adjacent to a magenta square .,adjacent,6.33984375,95.75,6.33203125,92.4375,6.3359375,95.9375,5.03125,76.5,5.21875,84.5,adjacent,a triangle is to the left of a magenta square .
+91,a green shape is adjacent to a yellow ellipse .,adjacent,6.32421875,96.875,6.34375,97.75,6.3203125,98.375,4.75,76.0,5.125,89.0,adjacent,a green shape is to the left of a yellow ellipse .
+93,a gray ellipse is adjacent to a cyan circle .,adjacent,6.3359375,96.3125,6.31640625,95.8125,6.34375,94.0625,4.6875,78.5,4.78125,76.0,adjacent,a gray ellipse is to the right of a cyan circle .
+96,a blue semicircle is adjacent to a blue circle .,adjacent,6.2890625,98.75,6.3515625,93.3125,6.2421875,106.875,5.15625,79.5,4.84375,67.0,adjacent,a blue semicircle is to the right of a blue circle .
+97,a cyan ellipse is adjacent to a red shape .,adjacent,6.3203125,95.0625,6.34765625,94.8125,6.3515625,95.3125,4.78125,61.75,5.28125,80.0,adjacent,a cyan ellipse is to the right of a red shape .
+0,a triangle is adjacent to a blue shape .,adjacent,6.34375,96.5625,6.3359375,96.4375,6.34765625,96.0625,4.71875,56.75,5.125,82.5,adjacent,a triangle is to the left of a blue shape .
+4,a blue cross is adjacent to a green circle .,adjacent,6.3125,96.5,6.33203125,94.1875,6.33203125,95.5,4.875,79.5,4.78125,62.5,adjacent,a blue cross is to the right of a green circle .
+9,a blue cross is adjacent to a green semicircle .,adjacent,6.30078125,99.0625,6.34375,92.375,6.31640625,98.5625,4.5625,66.5,4.65625,72.0,adjacent,a blue cross is to the right of a green semicircle .
+16,a gray pentagon is adjacent to a yellow shape .,adjacent,6.29296875,95.8125,6.3359375,95.5,6.34375,96.1875,4.96875,91.5,4.59375,80.5,adjacent,a gray pentagon is to the left of a yellow shape .
+19,a gray circle is adjacent to a circle .,adjacent,6.34375,95.6875,6.33203125,95.125,6.33203125,95.125,4.9375,69.0,4.84375,82.0,adjacent,a gray circle is to the right of a circle .
+33,a yellow shape is adjacent to a triangle .,adjacent,6.30859375,97.1875,6.32421875,98.75,6.32421875,98.75,4.65625,53.5,4.875,55.0,adjacent,a yellow shape is to the right of a triangle .
+35,a circle is adjacent to a yellow cross .,adjacent,6.33984375,96.0625,6.3359375,95.4375,6.328125,99.0,4.8125,58.75,4.5625,63.75,adjacent,a circle is to the left of a yellow cross .
+36,a blue shape is adjacent to a cyan circle .,adjacent,6.33984375,96.1875,6.3515625,95.0,6.31640625,98.1875,4.875,65.0,4.71875,58.0,adjacent,a blue shape is to the left of a cyan circle .
+38,a red cross is adjacent to a blue pentagon .,adjacent,6.328125,96.5625,6.33203125,98.5,6.328125,97.5,4.6875,66.0,4.78125,71.5,adjacent,a red cross is to the right of a blue pentagon .
+39,a red triangle is adjacent to a yellow pentagon .,adjacent,6.29296875,99.75,6.33984375,94.375,6.328125,97.4375,4.84375,58.5,4.78125,64.5,adjacent,a red triangle is to the right of a yellow pentagon .
+43,a yellow pentagon is adjacent to a green shape .,adjacent,6.296875,96.25,6.34375,96.8125,6.34375,96.8125,4.65625,88.5,4.65625,83.0,adjacent,a yellow pentagon is to the left of a green shape .
+52,a gray semicircle is adjacent to a yellow triangle .,adjacent,6.30859375,96.0625,6.34375,92.3125,6.28515625,101.0625,4.84375,68.5,4.6875,83.0,adjacent,a gray semicircle is to the left of a yellow triangle .
+63,a pentagon is adjacent to a cyan semicircle .,adjacent,6.3125,97.5,6.3359375,90.1875,6.3125,98.75,4.75,66.0,4.78125,74.5,adjacent,a pentagon is to the right of a cyan semicircle .
+75,a yellow triangle is adjacent to a green shape .,adjacent,6.3046875,97.125,6.33984375,97.6875,6.3359375,96.3125,4.875,63.75,4.78125,65.0,adjacent,a yellow triangle is to the right of a green shape .
+76,a green shape is adjacent to a red triangle .,adjacent,6.3359375,94.1875,6.33203125,99.5,6.34375,95.75,5.0,87.0,4.8125,100.5,adjacent,a green shape is to the right of a red triangle .
+82,a green ellipse is adjacent to a yellow ellipse .,adjacent,6.234375,101.625,6.34375,91.9375,6.34375,91.9375,4.78125,92.5,5.125,103.5,adjacent,a green ellipse is to the left of a yellow ellipse .
+84,a green shape is adjacent to a blue shape .,adjacent,6.27734375,97.8125,6.31640625,97.25,6.31640625,97.25,4.65625,65.5,4.625,75.5,adjacent,a green shape is to the right of a blue shape .
+85,a cyan shape is adjacent to a magenta rectangle .,adjacent,6.2734375,96.625,6.30078125,97.4375,6.30078125,97.4375,4.8125,79.5,4.9375,73.5,adjacent,a cyan shape is to the left of a magenta rectangle .
+88,a red rectangle is adjacent to a blue pentagon .,adjacent,6.3359375,96.625,6.33203125,95.5625,6.328125,91.8125,4.75,92.5,5.3125,112.0,adjacent,a red rectangle is to the left of a blue pentagon .
+4,a gray shape is adjacent to an ellipse .,adjacent,6.2578125,96.875,6.27734375,97.125,6.30859375,98.6875,4.65625,66.0,4.84375,59.5,adjacent,a gray shape is to the left of an ellipse .
+8,an ellipse is adjacent to a blue rectangle .,adjacent,6.3125,97.5625,6.3359375,95.5625,6.328125,95.5625,5.28125,99.0,4.71875,92.0,adjacent,an ellipse is to the left of a blue rectangle .
+28,a square is adjacent to a blue cross .,adjacent,6.3359375,94.5,6.328125,98.8125,6.3359375,97.9375,4.8125,73.5,4.875,61.5,adjacent,a square is to the left of a blue cross .
+33,a cyan circle is adjacent to a yellow ellipse .,adjacent,6.30078125,97.6875,6.3359375,90.0625,6.3125,98.125,4.84375,98.0,4.84375,78.0,adjacent,a cyan circle is to the left of a yellow ellipse .
+34,a blue rectangle is adjacent to a green rectangle .,adjacent,6.3046875,98.0625,6.3359375,92.5,6.3359375,92.5,4.75,55.0,4.65625,60.0,adjacent,a blue rectangle is to the right of a green rectangle .
+35,a red triangle is adjacent to a cyan shape .,adjacent,6.328125,97.6875,6.3359375,97.25,6.33984375,94.1875,4.6875,54.0,4.78125,68.0,adjacent,a red triangle is to the right of a cyan shape .
+41,a pentagon is adjacent to a red shape .,adjacent,6.3046875,98.0,6.33203125,97.6875,6.33984375,92.5625,4.90625,75.5,4.6875,72.0,adjacent,a pentagon is to the left of a red shape .
+44,a cross is adjacent to an ellipse .,adjacent,6.34765625,95.75,6.33203125,99.5,6.34765625,95.1875,4.75,83.5,4.6875,71.5,adjacent,a cross is to the right of an ellipse .
+51,a gray shape is adjacent to a circle .,adjacent,6.34375,96.3125,6.32421875,96.3125,6.32421875,96.3125,5.21875,77.5,4.875,67.5,adjacent,a gray shape is to the right of a circle .
+52,a magenta shape is adjacent to a yellow rectangle .,adjacent,6.3359375,97.0625,6.3203125,96.25,6.34765625,95.9375,4.78125,80.5,4.875,66.5,adjacent,a magenta shape is to the left of a yellow rectangle .
+53,a gray square is adjacent to a blue shape .,adjacent,6.296875,97.0,6.33203125,96.3125,6.328125,97.5625,4.84375,76.5,5.03125,83.0,adjacent,a gray square is to the left of a blue shape .
+55,a magenta shape is adjacent to a triangle .,adjacent,6.328125,95.1875,6.3515625,95.8125,6.34375,94.9375,4.71875,76.0,4.71875,84.5,adjacent,a magenta shape is to the left of a triangle .
+59,a triangle is adjacent to a cyan ellipse .,adjacent,6.33984375,95.5,6.328125,93.3125,6.33203125,94.875,4.8125,75.0,4.71875,64.0,adjacent,a triangle is to the left of a cyan ellipse .
+60,a gray triangle is adjacent to a pentagon .,adjacent,6.33984375,98.1875,6.33203125,92.5,6.32421875,97.75,4.8125,63.25,4.53125,57.75,adjacent,a gray triangle is to the left of a pentagon .
+62,a blue triangle is adjacent to a blue pentagon .,adjacent,6.29296875,98.5625,6.31640625,96.125,6.3046875,98.1875,4.84375,89.0,4.875,88.0,adjacent,a blue triangle is to the left of a blue pentagon .
+63,a gray ellipse is adjacent to a green shape .,adjacent,6.234375,97.5625,6.30859375,98.8125,6.34765625,93.3125,4.8125,73.0,4.84375,62.25,adjacent,a gray ellipse is to the left of a green shape .
+65,a cyan triangle is adjacent to a yellow shape .,adjacent,6.29296875,96.25,6.33984375,96.875,6.34765625,96.0625,4.5625,71.0,4.65625,77.0,adjacent,a cyan triangle is to the left of a yellow shape .
+74,a gray shape is adjacent to a green rectangle .,adjacent,6.33984375,94.4375,6.3359375,94.8125,6.34375,95.1875,4.75,83.0,4.90625,90.0,adjacent,a gray shape is to the left of a green rectangle .
+77,a green semicircle is adjacent to a blue circle .,adjacent,6.3203125,94.125,6.328125,98.5625,6.34375,95.4375,5.0625,64.5,4.78125,62.75,adjacent,a green semicircle is to the left of a blue circle .
+82,a magenta shape is adjacent to a gray shape .,adjacent,6.2734375,99.125,6.32421875,98.375,6.32421875,98.5,4.625,74.0,4.8125,83.0,adjacent,a magenta shape is to the left of a gray shape .
+83,a red rectangle is adjacent to a gray ellipse .,adjacent,6.2890625,99.3125,6.3125,97.75,6.32421875,94.375,4.90625,68.0,4.71875,56.0,adjacent,a red rectangle is to the right of a gray ellipse .
+84,a red cross is adjacent to a cyan ellipse .,adjacent,6.296875,98.375,6.33984375,94.25,6.30078125,98.625,4.625,61.0,4.65625,62.5,adjacent,a red cross is to the left of a cyan ellipse .
+86,a cross is adjacent to a magenta shape .,adjacent,6.32421875,95.6875,6.33203125,95.375,6.31640625,98.5625,4.90625,85.0,4.71875,84.5,adjacent,a cross is to the right of a magenta shape .
+89,a pentagon is adjacent to a blue shape .,adjacent,6.33203125,96.75,6.33984375,96.0,6.34375,95.875,4.59375,59.25,4.6875,63.75,adjacent,a pentagon is to the right of a blue shape .
+94,a gray pentagon is adjacent to a blue shape .,adjacent,6.26953125,98.6875,6.3359375,97.6875,6.328125,96.4375,4.6875,81.5,4.9375,103.5,adjacent,a gray pentagon is to the right of a blue shape .
+95,a yellow ellipse is adjacent to a cyan shape .,adjacent,6.29296875,96.25,6.3359375,92.125,6.35546875,95.5625,4.71875,79.0,4.78125,73.0,adjacent,a yellow ellipse is to the right of a cyan shape .
+8,a gray cross is adjacent to a yellow rectangle .,adjacent,6.3203125,97.25,6.33984375,95.8125,6.3203125,95.5,4.75,85.5,4.59375,86.0,adjacent,a gray cross is to the right of a yellow rectangle .
+11,a cyan ellipse is adjacent to a pentagon .,adjacent,6.30859375,100.0625,6.296875,100.25,6.34765625,92.75,4.96875,67.0,4.78125,75.5,adjacent,a cyan ellipse is to the left of a pentagon .
+13,a rectangle is adjacent to a green shape .,adjacent,6.31640625,96.5,6.30078125,98.5625,6.3515625,94.0,4.59375,53.5,4.75,57.5,adjacent,a rectangle is to the left of a green shape .
+14,a blue triangle is adjacent to a magenta rectangle .,adjacent,6.34375,95.625,6.3203125,95.375,6.3203125,94.5625,4.96875,100.0,4.71875,99.5,adjacent,a blue triangle is to the left of a magenta rectangle .
+15,a yellow cross is adjacent to a gray shape .,adjacent,6.328125,97.4375,6.34375,96.0625,6.34765625,95.0,5.03125,94.5,4.90625,84.5,adjacent,a yellow cross is to the right of a gray shape .
+18,a triangle is adjacent to a square .,adjacent,6.33984375,97.125,6.33984375,95.9375,6.33984375,95.0625,4.5625,79.5,4.9375,110.5,adjacent,a triangle is to the right of a square .
+19,a blue ellipse is adjacent to a green semicircle .,adjacent,6.3046875,98.125,6.33203125,89.75,6.33203125,93.9375,4.6875,72.5,4.9375,97.0,adjacent,a blue ellipse is to the left of a green semicircle .
+20,a cyan triangle is adjacent to a red square .,adjacent,6.296875,93.1875,6.32421875,93.5,6.32421875,96.5,4.75,63.25,5.125,62.75,adjacent,a cyan triangle is to the right of a red square .
+21,a blue circle is adjacent to a pentagon .,adjacent,6.34375,95.125,6.33203125,92.8125,6.328125,96.5625,4.625,72.5,4.75,65.0,adjacent,a blue circle is to the left of a pentagon .
+24,a red circle is adjacent to a cyan shape .,adjacent,6.33984375,95.1875,6.328125,92.375,6.328125,92.375,4.75,58.0,5.1875,63.5,adjacent,a red circle is to the right of a cyan shape .
+34,a cross is adjacent to a green rectangle .,adjacent,6.33984375,96.125,6.33203125,93.5,6.3203125,97.75,4.8125,79.0,4.75,74.5,adjacent,a cross is to the right of a green rectangle .
+50,a green shape is adjacent to a blue shape .,adjacent,6.2734375,98.125,6.30859375,98.3125,6.30859375,98.3125,4.59375,74.5,4.84375,64.5,adjacent,a green shape is to the right of a blue shape .
+60,a gray square is adjacent to a triangle .,adjacent,6.33203125,94.5,6.32421875,97.8125,6.34375,96.0,4.78125,57.0,5.03125,71.0,adjacent,a gray square is to the right of a triangle .
+62,a pentagon is adjacent to a gray ellipse .,adjacent,6.28125,97.5,6.27734375,99.6875,6.34375,92.625,4.875,79.0,4.53125,65.5,adjacent,a pentagon is to the left of a gray ellipse .
+68,a yellow triangle is adjacent to a circle .,adjacent,6.3359375,96.3125,6.33984375,93.9375,6.328125,99.5,4.90625,63.75,4.8125,56.75,adjacent,a yellow triangle is to the left of a circle .
+72,a circle is adjacent to a magenta shape .,adjacent,6.33984375,96.875,6.34765625,95.4375,6.34375,94.3125,4.75,74.5,4.78125,80.0,adjacent,a circle is to the left of a magenta shape .
+73,a pentagon is adjacent to a cyan ellipse .,adjacent,6.328125,95.25,6.34375,95.25,6.3125,96.875,4.84375,75.0,4.875,91.0,adjacent,a pentagon is to the right of a cyan ellipse .
+77,a square is adjacent to a pentagon .,adjacent,6.34375,97.3125,6.33203125,95.125,6.3203125,97.875,4.75,90.0,4.71875,98.5,adjacent,a square is to the left of a pentagon .
+82,a cross is adjacent to a red ellipse .,adjacent,6.3515625,94.0,6.265625,99.9375,6.34765625,93.625,4.9375,58.5,4.6875,72.0,adjacent,a cross is to the right of a red ellipse .
+83,a rectangle is adjacent to a magenta square .,adjacent,6.33203125,93.6875,6.34375,94.3125,6.34375,94.8125,4.78125,77.5,4.71875,84.5,adjacent,a rectangle is to the left of a magenta square .
+84,a red square is adjacent to a green triangle .,adjacent,6.33984375,96.25,6.34375,93.4375,6.33203125,97.25,4.78125,69.0,4.96875,67.0,adjacent,a red square is to the right of a green triangle .
+88,a magenta triangle is adjacent to a blue cross .,adjacent,6.24609375,98.5,6.25,99.4375,6.3125,96.25,4.5625,56.75,4.75,57.25,adjacent,a magenta triangle is to the right of a blue cross .
+89,a green square is adjacent to a yellow semicircle .,adjacent,6.34375,95.0,6.34765625,95.5,6.328125,91.75,4.90625,80.5,4.875,61.75,adjacent,a green square is to the right of a yellow semicircle .
+94,a cyan rectangle is adjacent to a square .,adjacent,6.25,96.625,6.31640625,97.0,6.3203125,96.9375,4.78125,81.0,4.96875,81.5,adjacent,a cyan rectangle is to the left of a square .

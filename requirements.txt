@@ -12,3 +12,4 @@ ipykernel
 seaborn
 matplotlib
 protobuf
+scipy
