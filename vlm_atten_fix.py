@@ -32,6 +32,7 @@ def upsample_grid_to_image(grid, image_size):
 
 
 def visualize(image, attn_map, title):
+    image_name = title.split("/")[-1]
     image_np = np.array(image)
     H = image_np.shape[0]
     attn_up = upsample_grid_to_image(attn_map, H)
@@ -40,13 +41,14 @@ def visualize(image, attn_map, title):
     plt.imshow(image_np)
     plt.imshow(attn_up, cmap="jet", alpha=0.6)
     plt.colorbar()
-    plt.title(title)
+    plt.title(image_name)
     plt.axis("off")
     plt.savefig(f"{title.replace(' ', '_')}.png")
     plt.show()
     plt.close()
 
 def visualize_patch_self_attn(image, attn_map, title):
+    image_name = title.split("/")[-1]
     print("Visualizing patch self-attention:", title)
     image_np = np.array(image)
     H = image_np.shape[0]
@@ -57,7 +59,7 @@ def visualize_patch_self_attn(image, attn_map, title):
     plt.imshow(image_np)
     plt.imshow(attn_up, cmap="jet", alpha=0.6)
     plt.colorbar()
-    plt.title(title)
+    plt.title(image_name)
     plt.axis("off")
     plt.savefig(f"{title.replace(' ', '_')}.png")
     plt.show()
@@ -579,9 +581,9 @@ if __name__ == "__main__":
 
             os.makedirs(f"{save_dir}/shard{shard_id}", exist_ok=True)
             # ---- visualize ----
-            visualize(image, entity1_map, f"{save_dir}/{sample_idx} {entity1_name} attention")
-            visualize(image, relation_map, f"{save_dir}/{sample_idx} {relation} attention")
-            visualize(image, entity2_map, f"{save_dir}/{sample_idx} {entity2_name} attention")
+            visualize(image, entity1_map, f"{save_dir}/shard{shard_id}/{sample_idx} {entity1_name} attention")
+            visualize(image, relation_map, f"{save_dir}/shard{shard_id}/{sample_idx} {relation} attention")
+            visualize(image, entity2_map, f"{save_dir}/shard{shard_id}/{sample_idx} {entity2_name} attention")
             # ---- compute metrics ----
             entity2_com_dist = compute_center_of_mass_distance(entity2_map, mask_entity2, grid_size)
             entity2_iou = compute_iou(entity2_map, mask_entity2, grid_size)
