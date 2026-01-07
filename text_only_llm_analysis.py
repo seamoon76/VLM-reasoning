@@ -216,14 +216,13 @@ for sent1, sent2 in paired_captions:
     if r1 is None or r2 is None:
         continue
 
-    # 注意：S2 中 entity 顺序是反的
     # S1: (A, B)
     # S2: (B, A)
     asym_s1 = r1["asym"]
     asym_s2 = r2["asym"]
 
-    # 如果关系被显式编码，这两个应该近似互为相反数
-    symmetry_score = asym_s1 + asym_s2  # 理想情况 ≈ 0
+    # if the relation is explicitly encoded, these two should be approximately negations
+    symmetry_score = asym_s1 + asym_s2  # ideal: 0
 
     pair_results.append({
         "sent1": sent1,
@@ -257,11 +256,11 @@ plt.plot(
 
 plt.xlabel("Asymmetry S1")
 plt.ylabel("Asymmetry S2")
-plt.title("Pair-level Attention Asymmetry")
+plt.title("Pair-level Attention Asymmetry (LLaVA)")
 plt.legend()
 plt.tight_layout()
 plt.show()
-plt.savefig("pair_level_symmetry.png")
+plt.savefig("pair_level_symmetry (LLaVA).png")
 plt.close()
 
 example = df_pairs.iloc[0]
