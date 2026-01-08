@@ -31,28 +31,22 @@ os.makedirs(OUT_ROOT, exist_ok=True)
 # =====================
 # DEBUG switches
 # =====================
-DEBUG_ATTN = True              # 打印 attention 统计
-DEBUG_SHOW_TOKENS = False      # 打印 token 序列（很长，默认关）
-DEBUG_LAYERWISE = True         # 每层都打印一份 min/max & row-sum
-AUTO_SOFTMAX_IF_NEEDED = True  # 如果检测到不是概率（有负值或row-sum不≈1），自动 softmax(dim=-1)
-
+DEBUG_ATTN = True              
+DEBUG_SHOW_TOKENS = False     
+DEBUG_LAYERWISE = True         
+AUTO_SOFTMAX_IF_NEEDED = True 
 # =====================
 # Baseline: shuffled-image (PATCH shuffle, same spirit as your LLaVA baseline)
 # =====================
 ENABLE_SHUFFLED_IMAGE_BASELINE = True
-SHUFFLE_SEED = 123  # 为了可复现
-SHUFFLE_GRID_SIZE = 24  # baseline 24x24 patch shuffle（与 LLaVA baseline 一致）
+SHUFFLE_SEED = 123  
+SHUFFLE_GRID_SIZE = 24  # baseline 24x24 patch shuffle
 
 def shuffle_image_patches(image_pil: Image.Image, grid_size: int = 24, seed: int = 123) -> Image.Image:
-    """
-    Patch-level shuffle baseline（保持每个 patch 内容不变，只打乱 patch 位置）
-    - 与你 LLaVA baseline 的 shuffle_image_patches 逻辑一致
-    """
     rng = np.random.RandomState(seed)
     img = np.array(image_pil.convert("RGB"))
     H, W, C = img.shape
 
-    # 防止不可整除导致错位：按 grid 切整块
     patch_h = H // grid_size
     patch_w = W // grid_size
     H2 = patch_h * grid_size
@@ -199,7 +193,7 @@ def upsample_grid_to_image(grid, image_size):
     grid_np = grid.detach().float().cpu().numpy()
     return cv2.resize(grid_np, (image_size, image_size), interpolation=cv2.INTER_NEAREST)
 
-def visualize(image, attn_map, title):
+def visualize(image, attn_map, save_path, caption):
     image_np = np.array(image)
     H = image_np.shape[0]
     attn_up = upsample_grid_to_image(attn_map, H)
@@ -208,19 +202,20 @@ def visualize(image, attn_map, title):
         amin = float(attn_map.min().item())
         amean = float(attn_map.mean().item())
         amax = float(attn_map.max().item())
-        print(f"[VIS] {title}  attn_map(min/mean/max)={amin:.6g}/{amean:.6g}/{amax:.6g}")
+        print(f"[VIS] {caption}  attn_map(min/mean/max)={amin:.6g}/{amean:.6g}/{amax:.6g}")
 
     attn_up = attn_up / (attn_up.max() + 1e-6)
     plt.figure(figsize=(5, 5))
     plt.imshow(image_np)
     plt.imshow(attn_up, cmap="jet", alpha=0.6)
     plt.colorbar()
-    plt.title(title)
+    plt.title(caption)             
     plt.axis("off")
-    plt.savefig(f"{title.replace(' ', '_')}.png")
+    plt.savefig(save_path + ".png") 
     plt.close()
 
-def visualize_patch_self_attn(image, attn_map, title):
+
+def visualize_patch_self_attn(image, attn_map, save_path, caption):
     image_np = np.array(image)
     H = image_np.shape[0]
     attn_up = upsample_grid_to_image(attn_map, H)
@@ -229,17 +224,18 @@ def visualize_patch_self_attn(image, attn_map, title):
         amin = float(attn_map.min().item())
         amean = float(attn_map.mean().item())
         amax = float(attn_map.max().item())
-        print(f"[VIS-SELF] {title}  attn_map(min/mean/max)={amin:.6g}/{amean:.6g}/{amax:.6g}")
+        print(f"[VIS-SELF] {caption}  attn_map(min/mean/max)={amin:.6g}/{amean:.6g}/{amax:.6g}")
 
     attn_up = attn_up / (attn_up.max() + 1e-6)
     plt.figure(figsize=(5, 5))
     plt.imshow(image_np)
     plt.imshow(attn_up, cmap="jet", alpha=0.6)
     plt.colorbar()
-    plt.title(title)
+    plt.title(caption)
     plt.axis("off")
-    plt.savefig(f"{title.replace(' ', '_')}.png")
+    plt.savefig(save_path + ".png")
     plt.close()
+
 
 def visualize_mask(image, mask, title, alpha=0.6, cmap="gray"):
     image_np = np.array(image)
@@ -712,11 +708,17 @@ for shard_id in range(NUM_SHARDS):
 
         # visualize attn maps (REAL)
         if entity1_map is not None:
-            visualize(image_feed, entity1_map, f"{shard_save_dir}/{sample_idx}_{entity1_name}_attention_REAL")
-        visualize(image_feed, relation_map, f"{shard_save_dir}/{sample_idx}_{relation}_attention_REAL")
-        if entity2_map is not None:
-            visualize(image_feed, entity2_map, f"{shard_save_dir}/{sample_idx}_{entity2_name}_attention_REAL")
+            save_path = f"{shard_save_dir}/{sample_idx}_{entity1_name}_attention_REAL"
+            caption   = f"\"{entity1_name}\" cross attention"
+            visualize(image_feed, entity1_map, save_path, caption)
 
+        save_path = f"{shard_save_dir}/{sample_idx}_{relation}_attention_REAL"
+        caption   = f"\"{relation}\" cross attention"
+        visualize(image_feed, relation_map, save_path, caption)
+        if entity2_map is not None:
+            save_path = f"{shard_save_dir}/{sample_idx}_{entity2_name}_attention_REAL"
+            caption   = f"\"{entity2_name}\" cross attention"
+            visualize(image_feed, entity2_map, save_path, caption)
         metric_path = os.path.join(shard_save_dir, f"metrics_sample_{sample_idx}.txt")
         with open(metric_path, "w") as f:
             f.write(f"shard idx: {shard_id}\n")
@@ -777,8 +779,13 @@ for shard_id in range(NUM_SHARDS):
             with open(metric_path, "a") as f:
                 f.write(f"[REAL] Background disperson: {bg_disp:.4f}\n")
 
-        visualize_patch_self_attn(image_feed, e1_self, f"{shard_save_dir}/{sample_idx}_entity1_self_attention_REAL")
-        visualize_patch_self_attn(image_feed, e2_self, f"{shard_save_dir}/{sample_idx}_entity2_self_attention_REAL")
+        save_path = f"{shard_save_dir}/{sample_idx}_{entity1_name}_self_attention_REAL"
+        caption   = f"\"{entity1_name}\" self attention"
+        visualize_patch_self_attn(image_feed, e1_self, save_path, caption)
+
+        save_path = f"{shard_save_dir}/{sample_idx}_{entity2_name}_self_attention_REAL"
+        caption   = f"\"{entity2_name}\" self attention"
+        visualize_patch_self_attn(image_feed, e2_self, save_path, caption)
 
         m1 = compute_entity_metrics(e1_self, mask_entity1, other_gt_mask=mask_entity2, debug_tag="entity1_self_REAL")
         m2 = compute_entity_metrics(e2_self, mask_entity2, other_gt_mask=mask_entity1, debug_tag="entity2_self_REAL")
@@ -832,10 +839,16 @@ for shard_id in range(NUM_SHARDS):
 
                     # visualize baseline
                     if e1_map_b is not None:
-                        visualize(image_feed_b, e1_map_b, f"{shard_save_dir}/{sample_idx}_{entity1_name}_attention_SHUF")
-                    visualize(image_feed_b, rel_map_b, f"{shard_save_dir}/{sample_idx}_{relation}_attention_SHUF")
+                        save_path = f"{shard_save_dir}/{sample_idx}_{entity1_name}_attention_SHUF"
+                        caption   = f"\"{entity1_name}\" cross attention"
+                        visualize(image_feed_b, e1_map_b, save_path, caption)
+                    save_path = f"{shard_save_dir}/{sample_idx}_{relation}_attention_SHUF"
+                    caption   = f"\"{relation}\" cross attention"
+                    visualize(image_feed_b, rel_map_b, save_path, caption)
                     if e2_map_b is not None:
-                        visualize(image_feed_b, e2_map_b, f"{shard_save_dir}/{sample_idx}_{entity2_name}_attention_SHUF")
+                        save_path = f"{shard_save_dir}/{sample_idx}_{entity2_name}_attention_SHUF"
+                        caption   = f"\"{entity2_name}\" cross attention"
+                        visualize(image_feed_b, e2_map_b, save_path, caption)
 
                     with open(metric_path, "a") as f:
                         f.write("\n[SHUF] ===== Patch-Shuffle Baseline =====\n")
@@ -880,7 +893,6 @@ for shard_id in range(NUM_SHARDS):
                     seed1_b = get_entity_center_seed(mask_entity1)
                     seed2_b = get_entity_center_seed(mask_entity2)
                     bg_seed_b = get_background_seed(mask_entity1, mask_entity2)
-
                     e1_self_b = get_patch_self_attention_map(vis_self_b, seed1_b, gh, gw)
                     e2_self_b = get_patch_self_attention_map(vis_self_b, seed2_b, gh, gw)
 
@@ -891,8 +903,12 @@ for shard_id in range(NUM_SHARDS):
                         with open(metric_path, "a") as f:
                             f.write(f"[SHUF] Background disperson: {bg_disp_b:.4f}\n")
 
-                    visualize_patch_self_attn(image_feed_b, e1_self_b, f"{shard_save_dir}/{sample_idx}_entity1_self_attention_SHUF")
-                    visualize_patch_self_attn(image_feed_b, e2_self_b, f"{shard_save_dir}/{sample_idx}_entity2_self_attention_SHUF")
+                    save_path = f"{shard_save_dir}/{sample_idx}_{entity1_name}_self_attention_SHUF"
+                    caption   = f"\"{entity1_name}\" self attention"
+                    visualize_patch_self_attn(image_feed_b, e1_self_b, save_path, caption)
+                    save_path = f"{shard_save_dir}/{sample_idx}_{entity2_name}_self_attention_SHUF"
+                    caption   = f"\"{entity2_name}\" self attention"
+                    visualize_patch_self_attn(image_feed_b, e2_self_b, save_path, caption)
 
                     m1b = compute_entity_metrics(e1_self_b, mask_entity1, other_gt_mask=mask_entity2, debug_tag="entity1_self_SHUF")
                     m2b = compute_entity_metrics(e2_self_b, mask_entity2, other_gt_mask=mask_entity1, debug_tag="entity2_self_SHUF")
@@ -908,7 +924,7 @@ for shard_id in range(NUM_SHARDS):
                         for k, v in m2b.items():
                             f.write(f"[SHUF] Entity2 self {k}: {v:.4f}\n")
 
-        print(f"[OK] shard{shard_id} sample {sample_idx} saved under: {shard_save_dir}")
+        print(f"[OK] shard{shard_id} sample saved under: {shard_save_dir}")
 
 # =====================
 # Global mean analysis (ALL SHARDS)
