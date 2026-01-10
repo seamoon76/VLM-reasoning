@@ -15,9 +15,9 @@ We have two models: [LLaVA-v1.5-7B](https://huggingface.co/liuhaotian/llava-v1.5
 ### Installation for QWen
 
 ## Data preparition
-Download two datasets from below links: [ShapeWorld-based Dataset](https://polybox.ethz.ch/index.php/s/6gN7q5LqbpczGdJ) and [Fixed-position Counterfactual Dataset](https://polybox.ethz.ch/index.php/s/KpLcHJJSyexQqcQ), put them under `data` directory. It should looks like: data/spatial_twoshapes/agreement/relational/shard0/world-0.png.
+Download two datasets from below links: [ShapeWorld-based Dataset](https://polybox.ethz.ch/index.php/s/6gN7q5LqbpczGdJ) and [Fixed-position Counterfactual Dataset](https://polybox.ethz.ch/index.php/s/KpLcHJJSyexQqcQ), put them under `data` directory. It should looks like: `data/spatial_twoshapes/agreement/relational/shard0/world-0.png`
 and 
-data/dataset_sample/images/pair_00000_control.png
+`data/dataset_sample/images/pair_00000_control.png`.
 
 ## Run Commands
 ### In LLaVA Env

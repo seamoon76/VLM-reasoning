@@ -165,4 +165,6 @@ head_diff_stats_topright/
 head_diff_stats_topleft/
 head_diff_stats_bottomright/
 
-*.csv
+*.
+
+models/llava
