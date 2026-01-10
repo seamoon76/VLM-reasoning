@@ -61,12 +61,13 @@ data/dataset_sample/images/pair_00000_control.png
 
 1. **Cross-attention and self-attention analysis**:
 
+Set line 581 in `vlm_atten_analysis_llava.py` to your data storage path, such as `BASE = f"/home/maqima/VLM-Visualizer/data/spatial_twoshapes/agreement/relational/shard{shard_id}"`.
 ```bash
 python vlm_atten_analysis_llava.py
 ```
 
 2. **Text-only attention analysis**:
-
+Set line 36 in `text_only_llm_analysis_llava.py` to your data storage path, such as `CAPTION_BASE = "/home/maqima/VLM-Visualizer/data/spatial_twoshapes/agreement/relational/"`.
 ```bash
 python text_only_llm_analysis_llava.py
 ```
