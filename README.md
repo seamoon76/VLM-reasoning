@@ -43,8 +43,8 @@ Please follow the environment setup instructions provided in the repository to p
 
 Download the following two datasets:
 
-* **ShapeWorld-based Dataset**: [https://polybox.ethz.ch/index.php/s/6gN7q5LqbpczGdJ](https://polybox.ethz.ch/index.php/s/6gN7q5LqbpczGdJ)
-* **Fixed-position Counterfactual Dataset**: [https://polybox.ethz.ch/index.php/s/KpLcHJJSyexQqcQ](https://polybox.ethz.ch/index.php/s/KpLcHJJSyexQqcQ)
+* **ShapeWorld-based Dataset**: [https://polybox.ethz.ch/index.php/s/6gN7q5LqbpczGdJ](https://polybox.ethz.ch/index.php/s/6gN7q5LqbpczGdJ), visit https://github.com/YimingZhao-art/ShapeWorld to reproduce the dataset.
+* **Fixed-position Counterfactual Dataset**: [https://polybox.ethz.ch/index.php/s/KpLcHJJSyexQqcQ](https://polybox.ethz.ch/index.php/s/KpLcHJJSyexQqcQ), run `bash run_corner_experiments.sh` to reproduce the dataset.
 
 After downloading, place them under the `data/` directory. The directory structure should look like:
 
