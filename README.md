@@ -47,12 +47,12 @@ Here we describe how to set up a minimal Python environment for running **Qwen2-
 
 Qwen2-VL requires a recent version of `transformers`.
 
-```
+```bash
 pip install "transformers>=4.57.0"
 ```
 
 Install additional commonly used dependencies:
-```
+```bash
 pip install torch numpy pillow opencv-python matplotlib
 ```
 
@@ -113,7 +113,7 @@ python text_only_llm_analysis_qwen2.py
 3. **Head and layer specialization analysis**:
 
 ```bash
-bash run_corner_experiments.sh
+bash run_corner_experiments_qwen2.sh
 ```
 
 ---
