@@ -35,7 +35,30 @@ Due to differences in dependencies, we recommend setting up **separate virtual e
 
 ### Installation for Qwen2-VL
 
-Please follow the environment setup instructions provided in the repository to prepare a separate virtual environment for Qwen2-VL.
+Here we describe how to set up a minimal Python environment for running **Qwen2-VL** attention analysis using the 🤗 Transformers library.
+
+#### Requirements
+
+- Python **3.9+**
+- CUDA-enabled GPU (recommended)
+- PyTorch compatible with your CUDA version
+
+#### Install Dependencies
+
+Qwen2-VL requires a recent version of `transformers`.
+
+```
+pip install "transformers>=4.57.0"
+```
+
+Install additional commonly used dependencies:
+```
+pip install torch numpy pillow opencv-python matplotlib
+```
+
+⚠️ Make sure your installed PyTorch version matches your CUDA setup.
+Refer to: https://pytorch.org/get-started/locally/
+
 
 ---
 
