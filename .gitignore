@@ -155,3 +155,16 @@ visualizations/
 left_right_analysis_outputs/
 output_token_attention_over_image
 question_input_output_token_attention_over_image
+
+dataset_topleft/
+dataset_topright/
+dataset_bottomleft/
+dataset_bottomright/
+head_diff_stats_bottomleft/
+head_diff_stats_topright/
+head_diff_stats_topleft/
+head_diff_stats_bottomright/
+
+*.
+
+models/llava

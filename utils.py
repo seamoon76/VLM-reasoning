@@ -1,3 +1,5 @@
+# this code is directly from https://github.com/zjysteven/VLM-Visualizer/blob/main/utils.py. We follow its MIT license.
+
 # many are copied from https://github.com/mattneary/attention/blob/master/attention/attention.py
 # here it nullifies the attention over the first token (<bos>)
 # which in practice we find to be a good idea

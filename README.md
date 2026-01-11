@@ -1,36 +1,107 @@
-# Visualizing the attention of vision-language models
-## About
-- Just like how CNNs, ViTs, LLMs themselves have tools for visualizing/interpreting their decision process, I would like to have a tool to visualize how vision-language models (or multi-modal LLMs) generate their responses based on the input image. Specifically I try to see **what parts of the image the model is looking at when generating a certain token**. The idea is straightforward: we can combine the attention weights of the LLM with the attention weights of the ViT to produce an attention map over the input image.
+# Interpreting Attention Mechanisms in Vision-Language Models for Spatial Reasoning
 
+This repository provides code and instructions for analyzing and visualizing attention mechanisms in Vision-Language Models (VLMs) with a focus on spatial relational reasoning. We conduct experiments on both multimodal (vision + language) and text-only settings to study cross-attention, self-attention, and head/layer specialization.
 
-- *Note* that this project is a work in progress and many design choices are open to debate. It may not be the most rigorous implementation. Also, it currently only supports [LLaVA](https://github.com/haotian-liu/LLaVA) models (specifically the v1.5 versions; v1.6 and the latest Next series need extra adaptations). I can definitely consider extending it to other models if there is interest. *If you have any ideas or thoughts, feel free to open a discussion [here](https://github.com/zjysteven/VLMVisualizer/discussions)*.
-
-
-- Browse the example jupyter notebook [llava_example.ipynb](llava_example.ipynb) to try yourself.
-
-## Examples
-This is kind of a naive example but can serve as a proof of concept. The image is an input from [MMBench](https://github.com/open-compass/MMBench/blob/main/samples/MMBench/1.jpg).
-![example_1_data](assets/example_1_data.png)
-
-With the steps in [llava_example.ipynb](llava_example.ipynb), we can first see how much attention the model pays to the image when generating each token.
-![example_1_attn_over_vis_tokens](assets/example_1_attn_over_vis_tokens.png)
-
-For example, when generating the `apple` token in `print("apple")`, around 45% of the attention is on the vision tokens, which makes sense as the model needs to read "apple" from the image. It also makes sense that compared to other tokens, the model pays more attention to vision tokens when generating the three words (apple, banana, cherry; see the three peaks in the above plot).
-
-
-Then we can further connect with the vision encoder, i.e. using ViT's attention, to show the attention map over the input image.
-![example_1_attn_over_image](assets/example_1_attn_over_image.png)
-
-The figure shows the image overlayed with the attention map when generating those tokens. Although there seems to be some random areas that the model pays attention to all the time, we can see that when generating `apple`/`banana`/`cherry` the model does seem to focus more on the "apple"/"banana"/"cherry" in the image.
-
+---
 
 ## Installation
-Install a compatible version of torch and torchvision. Then install dependencies with `pip install -r requirements.txt`.
+
+We evaluate two models:
+
+* **LLaVA-v1.5-7B** ([Hugging Face](https://huggingface.co/liuhaotian/llava-v1.5-7b))
+* **Qwen2-VL-7B-Instruct** ([Hugging Face](https://huggingface.co/Qwen/Qwen2-VL-7B-Instruct))
+
+Due to differences in dependencies, we recommend setting up **separate virtual environments** for the two models.
+
+### Installation for LLaVA
+
+1. Download the modified LLaVA code from [this repository](https://github.com/zjysteven/VLM-Visualizer/tree/main/models/llava) and place it under `models/llava/`.
+
+   > **Note:** This version is adapted from LLaVA v1.5 to support exporting attention maps from the CLIP vision encoder.
+
+2. Modify the following line in `models/llava/model/multimodal_encoder/clip_encoder.py` (around line 30):
+
+```diff
+- self.vision_tower = CLIPVisionModel.from_pretrained(self.vision_tower_name, device_map=device_map)
++ self.vision_tower = CLIPVisionModel.from_pretrained(
++     self.vision_tower_name,
++     device_map=device_map,
++     attn_implementation="eager",
++     torch_dtype=torch.bfloat16
++ )
+```
+
+3. Follow the instructions in `env_setup_llava.bash` to create and activate the LLaVA virtual environment.
+
+### Installation for Qwen2-VL
+
+Please follow the environment setup instructions provided in the repository to prepare a separate virtual environment for Qwen2-VL.
+
+---
+
+## Data Preparation
+
+Download the following two datasets:
+
+* **ShapeWorld-based Dataset**: [https://polybox.ethz.ch/index.php/s/6gN7q5LqbpczGdJ](https://polybox.ethz.ch/index.php/s/6gN7q5LqbpczGdJ), visit https://github.com/YimingZhao-art/ShapeWorld to reproduce the dataset.
+* **Fixed-position Counterfactual Dataset**: [https://polybox.ethz.ch/index.php/s/KpLcHJJSyexQqcQ](https://polybox.ethz.ch/index.php/s/KpLcHJJSyexQqcQ), run `bash run_corner_experiments.sh` to reproduce the dataset.
+
+After downloading, place them under the `data/` directory. The directory structure should look like:
+
+```
+data/spatial_twoshapes/agreement/relational/shard0/world-0.png
+data/dataset_sample/images/pair_00000_control.png
+```
+
+---
+
+## Running Experiments
+
+### In the LLaVA Environment
+
+1. **Cross-attention and self-attention analysis**:
+
+Set line 581 in `vlm_atten_analysis_llava.py` to your data storage path, such as `BASE = f"/home/maqima/VLM-Visualizer/data/spatial_twoshapes/agreement/relational/shard{shard_id}"`.
+```bash
+python vlm_atten_analysis_llava.py
+```
+
+2. **Text-only attention analysis**:
+
+Set line 36 in `text_only_llm_analysis_llava.py` to your data storage path, such as `CAPTION_BASE = "/home/maqima/VLM-Visualizer/data/spatial_twoshapes/agreement/relational/"`.
+```bash
+python text_only_llm_analysis_llava.py
+```
+
+### In the Qwen2-VL Environment
+
+1. **Cross-attention and self-attention analysis**:
+
+```bash
+python vlm_atten_analysis_qwen2.py
+```
+
+2. **Text-only attention analysis**:
+
+```bash
+python text_only_llm_analysis_qwen2.py
+```
+
+3. **Head and layer specialization analysis**:
+
+```bash
+bash run_corner_experiments.sh
+```
+
+---
 
 ## Acknowledgements
-[LLaVA](https://github.com/haotian-liu/LLaVA): The official implementation of the LLaVA model.
 
-[attention](https://github.com/mattneary/attention): Attention aggregation for LLMs is heavily borrowed from this repo.
+* **VLM-Visualizer** ([GitHub](https://github.com/zjysteven/VLM-Visualizer))
+  A visualization toolkit for inspecting attention maps in LLaVA.
 
-## Related projects
-[lmms-finetune](https://github.com/zjysteven/lmms-finetune): A unified and simple codebase for finetuning large vision language models including LLaVA-1.5/1.6/NeXT-Interleave/NeXT-Video/OneVision, Qwen(-2)-VL, Phi3-V.
+* **LLaVA** ([GitHub](https://github.com/haotian-liu/LLaVA))
+  The official implementation of the LLaVA model.
+
+* **attention** ([GitHub](https://github.com/mattneary/attention))
+  Code for attention aggregation in large language models, which this project heavily builds upon.

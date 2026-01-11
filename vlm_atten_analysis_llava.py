@@ -31,7 +31,8 @@ def upsample_grid_to_image(grid, image_size):
     return cv2.resize(grid_np, (image_size, image_size), interpolation=cv2.INTER_NEAREST)
 
 
-def visualize(image, attn_map, title):
+def visualize_cross_attention(image, attn_map, title):
+    image_name = title.split("/")[-1].split(" ",1)[1] # remove sample idx
     image_np = np.array(image)
     H = image_np.shape[0]
     attn_up = upsample_grid_to_image(attn_map, H)
@@ -40,13 +41,16 @@ def visualize(image, attn_map, title):
     plt.imshow(image_np)
     plt.imshow(attn_up, cmap="jet", alpha=0.6)
     plt.colorbar()
-    plt.title(title)
+    words = image_name.split(' ', 1)
+    new_title = f"\"{words[0]}\" {words[1]}"
+    plt.title(new_title)
     plt.axis("off")
     plt.savefig(f"{title.replace(' ', '_')}.png")
     plt.show()
     plt.close()
 
 def visualize_patch_self_attn(image, attn_map, title):
+    image_name = title.split("/")[-1].split(" ",1)[1]
     print("Visualizing patch self-attention:", title)
     image_np = np.array(image)
     H = image_np.shape[0]
@@ -57,7 +61,9 @@ def visualize_patch_self_attn(image, attn_map, title):
     plt.imshow(image_np)
     plt.imshow(attn_up, cmap="jet", alpha=0.6)
     plt.colorbar()
-    plt.title(title)
+    words = image_name.split(' ', 1)
+    new_title = f"\"{words[0]}\" {words[1]}"
+    plt.title(new_title)
     plt.axis("off")
     plt.savefig(f"{title.replace(' ', '_')}.png")
     plt.show()
@@ -83,7 +89,7 @@ def get_background_seed(mask_entity1, mask_entity2):
     ys, xs = torch.where(bg_mask > 0)
 
     if len(xs) == 0:
-        return None  # 极端情况
+        return None  # extreme case
 
     # choose random background pixel
     idx = np.random.randint(len(xs))
@@ -350,7 +356,7 @@ def get_attn_x_distribution(attn_map):
     """
     attn_map: [H, W], attention map for 'right' token
     return:
-        attn_x: [W], 概率分布
+        attn_x: [W], probability distribution on x-axis
     """
     attn_x = attn_map.sum(dim=0)
     attn_x = attn_x / (attn_x.sum() + 1e-6)
@@ -406,8 +412,8 @@ def compute_in_out_ratio(attn_map, gt_mask):
 def compute_entity_background_ratio(attn_map, mask_entity, mask_entity_other):
     """
     attn_map: [H, W]
-    mask_entity: 当前 entity 的 mask
-    mask_entity_other: 另一个 entity 的 mask
+    mask_entity: mask of the entity itself
+    mask_entity_other: mask of the other entity
     """
     bg_mask = 1 - torch.clamp(mask_entity + mask_entity_other, 0, 1)
 
@@ -579,9 +585,9 @@ if __name__ == "__main__":
 
             os.makedirs(f"{save_dir}/shard{shard_id}", exist_ok=True)
             # ---- visualize ----
-            visualize(image, entity1_map, f"{save_dir}/{sample_idx} {entity1_name} attention")
-            visualize(image, relation_map, f"{save_dir}/{sample_idx} {relation} attention")
-            visualize(image, entity2_map, f"{save_dir}/{sample_idx} {entity2_name} attention")
+            visualize_cross_attention(image, entity1_map, f"{save_dir}/shard{shard_id}/{sample_idx} {entity1_name} cross attention")
+            visualize_cross_attention(image, relation_map, f"{save_dir}/shard{shard_id}/{sample_idx} {relation} cross attention")
+            visualize_cross_attention(image, entity2_map, f"{save_dir}/shard{shard_id}/{sample_idx} {entity2_name} cross attention")
             # ---- compute metrics ----
             entity2_com_dist = compute_center_of_mass_distance(entity2_map, mask_entity2, grid_size)
             entity2_iou = compute_iou(entity2_map, mask_entity2, grid_size)
@@ -664,11 +670,11 @@ if __name__ == "__main__":
             # ---- visualization ----
             visualize_patch_self_attn(
                 image, entity1_self_map,
-                f"{save_dir}/shard{shard_id}/{sample_idx}_entity1_self_attention"
+                f"{save_dir}/shard{shard_id}/{sample_idx} {entity1_name} self attention"
             )
             visualize_patch_self_attn(
                 image, entity2_self_map,
-                f"{save_dir}/shard{shard_id}/{sample_idx}_entity2_self_attention"
+                f"{save_dir}/shard{shard_id}/{sample_idx} {entity2_name} self attention"
             )
 
             # ---- metrics ----

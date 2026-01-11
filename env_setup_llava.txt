@@ -2,7 +2,7 @@
 # save your public key to your GitHub ssh-key first
 git clone git@github.com:seamoon76/VLM-reasoning.git
 
-cd VLM-Visualizer
+cd VLM-reasoning
 
 # activate conda environment
 conda create -n llava python==3.10
