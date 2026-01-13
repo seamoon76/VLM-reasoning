@@ -33,7 +33,7 @@ tokenizer, model, _, context_len = load_pretrained_model(
 )
 
 model.eval()
-CAPTION_BASE = "/home/maqima/VLM-Visualizer/data/spatial_twoshapes/agreement/relational/"
+CAPTION_BASE = "data/spatial_twoshapes/agreement/relational/"
 
 
 H_REL = ["left", "right"]
@@ -287,5 +287,5 @@ plt.title(f"{r2['e1']} → {r2['e2']} : {r2['relation']}")
 
 plt.tight_layout()
 plt.show()
-plt.savefig("example_attention_bars.png")
+plt.savefig("example_attention_bars (LLaVA).png")
 plt.close()

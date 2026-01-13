@@ -17,7 +17,7 @@ device = "cuda" if torch.cuda.is_available() else "cpu"
 
 # ======= DATA: all shards =======
 NUM_SHARDS = 5
-BASE_ROOT = "/cluster/scratch/jiaysun/spatial_twoshapes/agreement/relational"  
+BASE_ROOT = "data/spatial_twoshapes/agreement/relational"  
 SPLIT = ""  # e.g. "test" / "train" / "agreement"
 
 FEED_SIZE = 672
@@ -438,10 +438,12 @@ def _decide_need_softmax(a_head_TT: torch.Tensor):
     return need, amin, row_sum_min, row_sum_mean
 
 # =====================
-# Core: Qwen2 attention extraction (UNCHANGED, you said it is correct)
+# Core: Qwen2 attention extraction
 # =====================
 def extract_prompt_level_cross_attention_qwen2(image_pil, prompt_text, model, processor, debug_prefix=""):
     """
+    The input construction and prompt formatting (including removal of the system prompt) follow the implementation in the official LLaVA demo notebook.
+    https://github.com/zjysteven/VLM-Visualizer/blob/main/llava_example.ipynb
     image_pil: PIL.Image (RGB)
     Return:
         cross_attn: (Tprompt_filtered, Nvision)   # text->vision

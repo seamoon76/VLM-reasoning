@@ -124,6 +124,8 @@ def compute_entity_metrics(attn_map, gt_mask, grid_size, other_gt_mask=None):
 
 def extract_prompt_level_cross_attention(image_path, prompt_text, model, image_processor, tokenizer, device, shuffle_image=False):
     """
+    The input construction and prompt formatting (including removal of the system prompt) follow the implementation in the official LLaVA demo notebook.
+    https://github.com/zjysteven/VLM-Visualizer/blob/main/llava_example.ipynb
     Return:
         cross_attn: [num_patches, num_prompt_tokens]
         input_tokens: list[str]
@@ -207,7 +209,7 @@ def extract_prompt_level_cross_attention(image_path, prompt_text, model, image_p
 
     # ---- cross attention: vision queries -> prompt tokens ----
     cross_attn = attns[vision_start:vision_end, :vision_start]
-    cross_attn[:, :1] = 0      # 屏蔽特殊 token（保留）
+    cross_attn[:, :1] = 0      
 
     row_sum = cross_attn.sum(dim=1, keepdim=True)
     cross_attn = cross_attn / (row_sum + 1e-6)
@@ -515,7 +517,7 @@ if __name__ == "__main__":
     save_dir = "left_right_analysis_outputs"
     os.makedirs(save_dir, exist_ok=True)
     for shard_id in range(5):
-        BASE = f"/home/maqima/VLM-Visualizer/data/spatial_twoshapes/agreement/relational/shard{shard_id}"
+        BASE = f"data/spatial_twoshapes/agreement/relational/shard{shard_id}"
         #agreement_path = f"{BASE}/agreement.txt"
         caption_path = f"{BASE}/caption.txt"
         #agreement = [float(x.strip()) for x in open(agreement_path).readlines()]

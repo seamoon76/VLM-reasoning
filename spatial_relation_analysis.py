@@ -32,9 +32,9 @@ from llava.utils import disable_torch_init
 
 from utils import load_image, aggregate_vit_attention
 from dataloader import load_all_shards
-from vlm_atten_fix import (
+from vlm_atten_analysis_llava import (
     extract_prompt_level_cross_attention,
-    find_token_positions,
+    find_word_token_positions,
     pool_attention,
     gt_bbox_to_patch_mask,
     get_entity_center_seed,
@@ -72,55 +72,50 @@ print("Model loaded successfully.")
 
 COMPLEX_RELATIONS = ["left", "right", "above", "below"]
 
-def parse_relation_sentence(sent):
-    """
-    Parse sentences like:
-    'a gray ellipse is to the left of a blue circle .'
+# def parse_relation_sentence(sent):
+#     """
+#     Parse sentences like:
+#     'there are two shapes a green rectangle and a green triangle . 
+#     what is the spatial relationship from the first shape to the second shape ? 
+#     the spatial relation is above '
     
-    Returns:
-        (entity1, rel, entity2) or None
-    """
-    sent = sent.strip().lower()
-    if "adjacent to" in sent:
-        pattern = " is adjacent to "
-        left, right = sent.split(pattern)
-        entity1 = left.strip()
-        entity2 = right.replace(".", "").strip()
-        return entity1, "adjacent", entity2
-    for rel in COMPLEX_RELATIONS:
-        pattern = f" is to the {rel} of "
-        if pattern in sent:
-            left, right = sent.split(pattern)
-            entity1 = left.strip()
-            entity2 = right.replace(".", "").strip()
-            return entity1, rel, entity2
-    return None
+#     Returns:
+#         (entity1, rel, entity2) or None
+#     """
+#     sent = sent.strip().lower()
+#     if "adjacent to" in sent:
+#         pattern = " is adjacent to "
+#         left, right = sent.split(pattern)
+#         entity1 = left.strip()
+#         entity2 = right.replace(".", "").strip()
+#         return entity1, "adjacent", entity2
+#     for rel in COMPLEX_RELATIONS:
+#         pattern = f" is to the {rel} of "
+#         if pattern in sent:
+#             left, right = sent.split(pattern)
+#             entity1 = left.strip()
+#             entity2 = right.replace(".", "").strip()
+#             return entity1, rel, entity2
+#     return None
 
 def replace_complex_relation_with_adjacent(caption):
     """
-    Replace complex spatial relations (left/right/above/below) with "adjacent".
-    
-    Args:
-        caption: Original caption, e.g., "a gray ellipse is to the left of a blue circle ."
-    
-    Returns:
-        Modified caption, e.g., "a gray ellipse is adjacent to a blue circle ."
-        Returns None if caption doesn't contain complex relations.
+    Replace sentence-final spatial relation (above/below/left/right)
+    with 'adjacent to' in the new QA-style template.
     """
-    parsed = parse_relation_sentence(caption)
-    if parsed is None:
-        return None
-    
-    entity1, rel, entity2 = parsed
-    
-    # Replace with "adjacent to" format
-    new_caption = f"{entity1} is adjacent to {entity2} ."
-    
-    # Preserve original capitalization for first letter
-    if caption[0].isupper():
-        new_caption = new_caption[0].upper() + new_caption[1:]
-    
-    return new_caption
+    caption = caption.strip()
+
+    COMPLEX_RELATIONS = ["left", "right", "above", "below"]
+
+    for rel in COMPLEX_RELATIONS:
+        # match: "the spatial relation is above"
+        pattern = f"the spatial relation is {rel}"
+        if pattern in caption.lower():
+            # preserve original casing except replaced phrase
+            return caption[:-len(rel)] + "adjacent to"
+
+    return None
+
 
 # =====================
 # Token finding helpers
@@ -251,23 +246,15 @@ def analyze_attention_for_caption(image_path, caption, world_data, sample_idx, m
     
     # Get entity masks from world data
     entity1 = world_data["entities"][0]
+    entity1_name = entity1["shape"]["name"]
     entity2 = world_data["entities"][1]
+    entity2_name = entity2["shape"]["name"]
     mask_entity1 = gt_bbox_to_patch_mask(entity1, grid_size=grid_size)
     mask_entity2 = gt_bbox_to_patch_mask(entity2, grid_size=grid_size)
-    
-    # Parse caption to find entities and relation
-    parsed = parse_relation_sentence(caption.lower())
-    if parsed is None:
-        print(f"Error: Could not parse caption for sample {sample_idx}")
-        return None
-    
-    entity1_text, relation, entity2_text = parsed
-
-    # Find token positions
-    # Note: Tokenization can split words, so we need to handle multiple tokens
-    entity1_pos = find_entity_tokens(input_tokens, entity1_text, entity1)
-    entity2_pos = find_entity_tokens(input_tokens, entity2_text, entity2)
-    relation_pos = find_relation_token(input_tokens, relation)
+    relation = caption.strip().lower().split()[-1]  # last word
+    entity1_pos = find_word_token_positions(tokenizer, input_tokens, entity1_name)
+    entity2_pos = find_word_token_positions(tokenizer, input_tokens, entity2_name)
+    relation_pos = find_word_token_positions(tokenizer, input_tokens, relation)
     
     if len(entity1_pos) == 0 or len(entity2_pos) == 0 or len(relation_pos) == 0:
         print(f"Warning: Could not find all tokens for sample {sample_idx}")
@@ -629,7 +616,7 @@ def visualize_comparison(df, output_dir="results"):
 
 if __name__ == "__main__":
     # Configuration
-    data_dir = "data/spatial_twoshapes/agreement/relational/test"
+    data_dir = "data/spatial_twoshapes/agreement/relational"
     output_dir = "results"
     max_samples = None  # Set to a number to limit samples for testing
     

@@ -16,6 +16,12 @@ Due to differences in dependencies, we recommend setting up **separate virtual e
 ### Installation for LLaVA
 
 1. Download the modified LLaVA code from [this repository](https://github.com/zjysteven/VLM-Visualizer/tree/main/models/llava) and place it under `models/llava/`.
+```
+cd ..
+git clone https://github.com/zjysteven/VLM-Visualizer.git
+cp -r VLM-Visualizer/models/llava/ VLM-reasoning/models/
+cd VLM-reasoning/
+```
 
    > **Note:** This version is adapted from LLaVA v1.5 to support exporting attention maps from the CLIP vision encoder.
 
@@ -84,14 +90,16 @@ data/dataset_topleft/images/pair_00000_control.png
 
 1. **Cross-attention and self-attention analysis**:
 
-Set line 581 in `vlm_atten_analysis_llava.py` to your data storage path, such as `BASE = f"/home/maqima/VLM-Visualizer/data/spatial_twoshapes/agreement/relational/shard{shard_id}"`.
+In `vlm_atten_analysis_llava.py`, set the data storage path at line 581. By default, it is
+`BASE = f"data/spatial_twoshapes/agreement/relational/shard{shard_id}"`.
 ```bash
 python vlm_atten_analysis_llava.py
 ```
 
 2. **Text-only attention analysis**:
 
-Set line 36 in `text_only_llm_analysis_llava.py` to your data storage path, such as `CAPTION_BASE = "/home/maqima/VLM-Visualizer/data/spatial_twoshapes/agreement/relational/"`.
+In `text_only_llm_analysis_llava.py`, set the data storage path at line 36. By default, it is
+`CAPTION_BASE = "/home/maqima/VLM-Visualizer/data/spatial_twoshapes/agreement/relational/"`.
 ```bash
 python text_only_llm_analysis_llava.py
 ```
@@ -99,13 +107,15 @@ python text_only_llm_analysis_llava.py
 ### In the Qwen2-VL Environment
 
 1. **Cross-attention and self-attention analysis**:
-
+In `vlm_atten_analysis_qwen2.py`, set the data storage path at line 20. By default, it is
+`BASE_ROOT = "data/spatial_twoshapes/agreement/relational"`.
 ```bash
 python vlm_atten_analysis_qwen2.py
 ```
 
 2. **Text-only attention analysis**:
-
+In `text_only_llm_analysis_qwen2.py`, set the data storage path at line 32. By default, it is
+`BASE_DIR = "data/spatial_twoshapes/agreement/relational"`.
 ```bash
 python text_only_llm_analysis_qwen2.py
 ```

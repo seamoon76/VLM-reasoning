@@ -29,7 +29,7 @@ model.eval()
 # =====================
 # Data: 5 shards
 # =====================
-BASE_DIR = "/cluster/scratch/jiaysun/spatial_twoshapes/agreement/relational"
+BASE_DIR = "data/spatial_twoshapes/agreement/relational"
 SHARD_IDS = list(range(5))  # 0..4
 
 H_REL = ["left", "right"]
