@@ -67,13 +67,13 @@ Refer to: https://pytorch.org/get-started/locally/
 Download the following two datasets:
 
 * **ShapeWorld-based Dataset**: [https://polybox.ethz.ch/index.php/s/6gN7q5LqbpczGdJ](https://polybox.ethz.ch/index.php/s/6gN7q5LqbpczGdJ), visit https://github.com/YimingZhao-art/ShapeWorld to reproduce the dataset.
-* **Fixed-position Counterfactual Dataset**: [https://polybox.ethz.ch/index.php/s/KpLcHJJSyexQqcQ](https://polybox.ethz.ch/index.php/s/KpLcHJJSyexQqcQ), run `bash run_corner_experiments.sh` to reproduce the dataset.
+* **Fixed-position Counterfactual Dataset**: (link TBD), or run `bash generate_corner_datasets.sh` to reproduce the dataset.
 
 After downloading, place them under the `data/` directory. The directory structure should look like:
 
 ```
 data/spatial_twoshapes/agreement/relational/shard0/world-0.png
-data/dataset_sample/images/pair_00000_control.png
+data/dataset_topleft/images/pair_00000_control.png
 ```
 
 ---

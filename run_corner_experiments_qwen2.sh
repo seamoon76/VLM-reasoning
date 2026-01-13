@@ -9,41 +9,21 @@ PATCH_SIZE="${PATCH_SIZE:-}"
 for corner in topleft topright bottomleft bottomright; do
   case "$corner" in
     topleft)
-      relation="upper_left_of"
       prompt="Is there anything in the top left corner?"
       ;;
     topright)
-      relation="upper_right_of"
       prompt="Is there anything in the top right corner?"
       ;;
     bottomleft)
-      relation="lower_left_of"
       prompt="Is there anything in the bottom left corner?"
       ;;
     bottomright)
-      relation="lower_right_of"
       prompt="Is there anything in the bottom right corner?"
       ;;
   esac
 
-  dataset_dir="dataset_${corner}"
+  dataset_dir="data/dataset_${corner}"
   stats_dir="head_diff_stats_${corner}"
-
-  python - <<PY
-from pathlib import Path
-import generate_dataset as gd
-
-gd.RELATIONS = ("${relation}",)
-gd.generate_dataset(
-    out_dir=Path("${dataset_dir}"),
-    count=${COUNT},
-    img_size=64,
-    min_shape=12,
-    max_shape=22,
-    min_gap=6,
-    seed=7,
-)
-PY
 
   python head_attention_stats_qwen2.py \
     --dataset "${dataset_dir}" \
@@ -65,4 +45,3 @@ python analyze_count_qwen2.py \
   --reduce-level max \
   --use-scale count \
   --diff-brightness raw
-
